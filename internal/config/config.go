@@ -9,7 +9,7 @@ import (
 )
 
 type Config struct {
-	DSN                    string        `yaml:"dsn"`
+	DSN                    []string      `yaml:"dsn"`
 	TotalWorkers           int           `yaml:"total_workers"`
 	GenericWorkers         int           `yaml:"generic_workers"`
 	PropertyMeWorkers      int           `yaml:"propertyme_workers"`

@@ -60,6 +60,38 @@ func TestLoadHonorsExplicitZeroAndFalseOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadSupportsMultipleTiDBDSNs(t *testing.T) {
+	path := writeTempConfig(t, "dsn:\n  - mysql://node-a\n  - mysql://node-b\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	got := cfg.DSN
+	want := []string{"mysql://node-a", "mysql://node-b"}
+	if len(got) != len(want) {
+		t.Fatalf("DSN len = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("DSN[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoadRejectsLegacyScalarDSN(t *testing.T) {
+	path := writeTempConfig(t, "dsn: mysql://legacy-single\n")
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want legacy scalar dsn rejection")
+	}
+	if !strings.Contains(err.Error(), "cannot unmarshal") {
+		t.Fatalf("Load() error = %q, want scalar type rejection", err)
+	}
+}
+
 func TestLoadRejectsUnknownKeys(t *testing.T) {
 	path := writeTempConfig(t, "unknown_key: true\n")
 

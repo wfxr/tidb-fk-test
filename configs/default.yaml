@@ -1,5 +1,6 @@
 # Required at runtime. Leave blank in VCS and provide via an override file.
-dsn: ""
+# Supply one or more TiDB DSNs under this single key.
+dsn: []
 
 # Fixed worker-group defaults. The current scheduler derives the live worker
 # total from the three group counts below.

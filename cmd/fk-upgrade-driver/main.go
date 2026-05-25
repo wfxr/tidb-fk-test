@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -21,8 +18,6 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
-
-const enableSharedLockFKCheckSQL = "SET SESSION tidb_foreign_key_check_in_shared_lock = 1"
 
 func main() {
 	configPath := flag.String("config", "", "path to config file")
@@ -40,7 +35,7 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		return err
 	}
 
-	db, err := openDB(ctx, cfg.DSN)
+	db, err := dbpkg.OpenTiDBCluster(ctx, cfg.DSN)
 	if err != nil {
 		return err
 	}
@@ -73,7 +68,7 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 	)
 
 	engine := runner.NewEngine(runner.EngineConfig{
-		Session:   sqlSession{DB: db},
+		Session:   db,
 		Registry:  registry,
 		Scheduler: scheduler,
 		SeedState: scenario.SeedState{
@@ -112,7 +107,7 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		return err
 	}
 
-	checkSummary, err := checker.Run(ctx, checkerDB{DB: db}, applied, runtimeSummary)
+	checkSummary, err := checker.Run(ctx, checkerQueryer{Queryer: db}, applied, runtimeSummary)
 	if err != nil {
 		return err
 	}
@@ -191,7 +186,7 @@ func printCheckerSummary(out *os.File, summary checker.Summary) {
 	_ = w.Flush()
 }
 
-func syncProbeSummary(ctx context.Context, db *sql.DB, runtime *report.Summary) error {
+func syncProbeSummary(ctx context.Context, db dbpkg.Execer, runtime *report.Summary) error {
 	if runtime == nil {
 		return nil
 	}
@@ -210,74 +205,10 @@ func syncProbeSummary(ctx context.Context, db *sql.DB, runtime *report.Summary) 
 	return err
 }
 
-func openDB(ctx context.Context, dsn string) (*sql.DB, error) {
-	if strings.TrimSpace(dsn) == "" {
-		return nil, errors.New("dsn is required")
-	}
-	if !sqlDriverRegistered("mysql") {
-		return nil, errors.New("mysql driver is not registered")
-	}
-
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
-	}
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+type checkerQueryer struct {
+	dbpkg.Queryer
 }
 
-func sqlDriverRegistered(name string) bool {
-	for _, driverName := range sql.Drivers() {
-		if driverName == name {
-			return true
-		}
-	}
-	return false
-}
-
-type checkerDB struct {
-	DB *sql.DB
-}
-
-func (db checkerDB) QueryRowContext(ctx context.Context, query string, args ...any) checker.RowScanner {
-	return db.DB.QueryRowContext(ctx, query, args...)
-}
-
-type sqlSession struct {
-	DB *sql.DB
-}
-
-func (db sqlSession) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbpkg.Tx, error) {
-	tx, err := db.DB.BeginTx(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := tx.ExecContext(ctx, enableSharedLockFKCheckSQL); err != nil {
-		_ = tx.Rollback()
-		return nil, err
-	}
-	return sqlTx{Tx: tx}, nil
-}
-
-type sqlTx struct {
-	Tx *sql.Tx
-}
-
-func (tx sqlTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return tx.Tx.ExecContext(ctx, query, args...)
-}
-
-func (tx sqlTx) QueryRowContext(ctx context.Context, query string, args ...any) dbpkg.RowScanner {
-	return tx.Tx.QueryRowContext(ctx, query, args...)
-}
-
-func (tx sqlTx) Commit() error {
-	return tx.Tx.Commit()
-}
-
-func (tx sqlTx) Rollback() error {
-	return tx.Tx.Rollback()
+func (q checkerQueryer) QueryRowContext(ctx context.Context, query string, args ...any) checker.RowScanner {
+	return q.Queryer.QueryRowContext(ctx, query, args...)
 }
