@@ -1,8 +1,7 @@
 # FK Upgrade Workload Driver
 
-This repo contains the Go implementation of the foreign-key upgrade workload
-driver described in
-`docs/plans/2026-05-25-fk-upgrade-workload-driver.md`.
+This repo contains the Go implementation of a foreign-key upgrade workload
+driver for TiDB-compatible clusters.
 
 The current implementation is a two-step CLI:
 
@@ -95,7 +94,6 @@ Notes:
 
 ## Key Files
 
-- `configs/default.yaml`: reference copy of the compiled defaults
 - `docs/runbooks/fk-upgrade-workload-driver.md`: operator runbook from the repo
   root
 - `cmd/fk-upgrade-driver/main.go`: current CLI entrypoint

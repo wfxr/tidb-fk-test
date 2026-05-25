@@ -36,8 +36,6 @@ The current binary still does not do these things:
 
 ## Defaults That Matter
 
-The compiled defaults are mirrored in `configs/default.yaml`.
-
 - `duration: 15m`
   This is the default workload execution window for `run`.
 - `progress_report_interval: 10s`
