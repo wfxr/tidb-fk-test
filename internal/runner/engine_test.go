@@ -442,12 +442,18 @@ type stubRun struct {
 }
 
 func newStubScenario(name string, group scenario.Group, err error, onRun func()) *stubScenario {
+	expectedErrorMatch := ""
+	if name == "payment_bill_update_probe" {
+		expectedErrorMatch = "upgrading a shared lock to an exclusive lock is not supported"
+	}
+
 	return &stubScenario{
 		meta: scenario.Metadata{
-			Name:            name,
-			Group:           group,
-			Weight:          1,
-			ConcurrencyHint: 1,
+			Name:               name,
+			Group:              group,
+			Weight:             1,
+			ConcurrencyHint:    1,
+			ExpectedErrorMatch: expectedErrorMatch,
 		},
 		err:   err,
 		onRun: onRun,

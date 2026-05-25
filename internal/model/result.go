@@ -16,16 +16,17 @@ type Result struct {
 	ErrorText string     `json:"error_text,omitempty"`
 }
 
-func Classify(_ string, err error) Result {
+func Classify(expectedErrorMatch string, err error) Result {
 	if err == nil {
 		return Result{Kind: Success}
 	}
 
 	message := err.Error()
 	normalized := strings.ToLower(message)
+	expected := strings.ToLower(expectedErrorMatch)
 
 	switch {
-	case strings.Contains(normalized, "upgrading a shared lock to an exclusive lock is not supported"):
+	case expected != "" && strings.Contains(normalized, expected):
 		return Result{Kind: ExpectedFKFailure, ErrorText: message}
 	case strings.Contains(normalized, "driver: bad connection"),
 		strings.Contains(normalized, "context deadline exceeded"),

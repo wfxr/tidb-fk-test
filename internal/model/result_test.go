@@ -17,12 +17,22 @@ func TestClassifySuccess(t *testing.T) {
 }
 
 func TestClassifyExpectedFKFailure(t *testing.T) {
-	res := Classify("payment_bill_update_probe", errors.New(
+	res := Classify("upgrading a shared lock to an exclusive lock is not supported", errors.New(
 		"ERROR 1105 (HY000): upgrading a shared lock to an exclusive lock is not supported",
 	))
 
 	if res.Kind != ExpectedFKFailure {
 		t.Fatalf("Kind = %q, want %q", res.Kind, ExpectedFKFailure)
+	}
+}
+
+func TestClassifySharedLockUpgradeErrorWithoutExpectedMatchIsUnexpected(t *testing.T) {
+	res := Classify("", errors.New(
+		"ERROR 1105 (HY000): upgrading a shared lock to an exclusive lock is not supported",
+	))
+
+	if res.Kind != UnexpectedFailure {
+		t.Fatalf("Kind = %q, want %q", res.Kind, UnexpectedFailure)
 	}
 }
 

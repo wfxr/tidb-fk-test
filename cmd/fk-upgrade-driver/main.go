@@ -20,6 +20,8 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
 
+const enableSharedLockFKCheckSQL = "SET SESSION tidb_foreign_key_check_in_shared_lock = 1"
+
 func main() {
 	configPath := flag.String("config", "", "path to config file")
 	flag.Parse()
@@ -113,6 +115,10 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		return nil
 	}
 
+	if err := syncProbeSummary(ctx, db, runtimeSummary); err != nil {
+		return err
+	}
+
 	checkSummary, err := checker.Run(ctx, checkerDB{DB: db}, applied, runtimeSummary)
 	if err != nil {
 		return err
@@ -126,6 +132,25 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 	)
 
 	return nil
+}
+
+func syncProbeSummary(ctx context.Context, db *sql.DB, runtime *report.Summary) error {
+	if runtime == nil {
+		return nil
+	}
+
+	stats, ok := runtime.Scenario("payment_bill_update_probe")
+	if !ok {
+		return nil
+	}
+
+	_, err := db.ExecContext(
+		ctx,
+		"INSERT INTO probe_summary (singleton_id, expected_fk_failure, unexpected_failure) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE expected_fk_failure = VALUES(expected_fk_failure), unexpected_failure = VALUES(unexpected_failure)",
+		stats.ExpectedFailure,
+		stats.UnexpectedFailure,
+	)
+	return err
 }
 
 func openDB(ctx context.Context, dsn string) (*sql.DB, error) {
@@ -171,6 +196,10 @@ type sqlSession struct {
 func (db sqlSession) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbpkg.Tx, error) {
 	tx, err := db.DB.BeginTx(ctx, opts)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, enableSharedLockFKCheckSQL); err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
 	return sqlTx{Tx: tx}, nil
