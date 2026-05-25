@@ -10,6 +10,8 @@ The current `cmd/fk-upgrade-driver` binary does these things:
 - requires a non-empty MySQL-compatible DSN
 - applies real generic, PropertyMe, and `probe_summary` schema/fixture seed
   phases in a fixed order
+- enables `tidb_foreign_key_check_in_shared_lock = 1` for every worker
+  transaction
 - builds and logs an initial warmup progress snapshot
 - runs the bounded warmup engine for `warmup_duration`
 - emits recurring `warmup progress snapshot` logs on
@@ -36,6 +38,9 @@ The checked-in defaults live in `configs/default.yaml`.
 - `failure_probe_interval: 10s`
   The failure-probe scenario is part of the warmup registry. There is still no
   separate out-of-band probe loop in `main`.
+- Current expected-failure probes:
+  - `payment_bill_update_probe`
+  - `statement_folio_parent_update_probe`
 - `generic_workers: 4`, `propertyme_workers: 3`, `failure_probe_workers: 1`
   These worker-group counts drive the bounded warmup run.
 - `total_workers: 8`
@@ -81,6 +86,12 @@ Then start the driver from the repo root:
 go run ./cmd/fk-upgrade-driver -config /tmp/fk-driver-smoke.yaml
 ```
 
+Or use the repo helper:
+
+```bash
+./scripts/run-local-smoke.sh "root@tcp(127.0.0.1:4000)/test" false
+```
+
 Expected result with the current bounded smoke path:
 
 - exit code `0`
@@ -95,6 +106,8 @@ Expected result with the current bounded smoke path:
 - recurring `warmup progress snapshot` logs while the 3-second warmup is still
   active
 - one `bounded warmup completed` log line before exit
+- non-zero `ExpectedFailure` counts if the target TiDB reproduces the current
+  two explicit parent-upgrade probes under shared-lock checking
 
 What you should not expect yet:
 
@@ -132,10 +145,15 @@ Because the current seed path creates the checker tables itself, missing-table
 checker failures now indicate an unexpected environment or schema drift rather
 than a known placeholder limitation.
 
+In the current implementation, a healthy checker-enabled smoke run should also
+show `probe_error_match Passed:true` after warmup.
+
 ## Operator Notes
 
 - Keep override files minimal. The loader starts from compiled defaults, and
   the checked-in `configs/default.yaml` mirrors those defaults for operators.
+- You do not need to manually `SET SESSION tidb_foreign_key_check_in_shared_lock = 1`.
+  The driver issues that statement for each worker transaction.
 - Unknown YAML keys are rejected. This is intentional and useful for catching
   stale config names.
 - If you want to change worker layout, update both `total_workers` and the

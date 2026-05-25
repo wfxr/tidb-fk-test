@@ -21,11 +21,18 @@ rolling-upgrade controller.
   used by scenarios and checker, then inserts bounded fixture rows.
 - The CLI runs the real bounded warmup engine for `warmup_duration`, using the
   registered scenarios plus the seeded fixture plans.
+- Each worker transaction explicitly runs
+  `SET SESSION tidb_foreign_key_check_in_shared_lock = 1`, so local smoke runs
+  exercise the shared-lock FK path instead of relying on external session
+  setup.
 - Recurring `warmup progress snapshot` logs are emitted every
   `progress_report_interval` while the warmup is still running.
 - After warmup, the CLI logs a final bounded warmup summary. If
   `checker_enabled: true`, it then runs the checker against the seeded tables
   and the runtime report summary.
+- The current bounded smoke path includes two expected-failure probes:
+  - `payment_bill_update_probe`
+  - `statement_folio_parent_update_probe`
 - This is still not a full rolling-upgrade controller: there is no
   post-upgrade execution phase, no upgrade orchestration, and no `-dry-run` or
   phase control flags yet.
@@ -52,6 +59,9 @@ checker_enabled: false
 EOF
 
 go run ./cmd/fk-upgrade-driver -config /tmp/fk-driver-smoke.yaml
+
+# or, with the repo helper script:
+./scripts/run-local-smoke.sh "root@tcp(127.0.0.1:4000)/test" false
 ```
 
 Expected smoke behavior on a reachable local playground:
@@ -63,6 +73,9 @@ Expected smoke behavior on a reachable local playground:
 - the command emits recurring `warmup progress snapshot` lines while warmup is
   still active
 - the command logs `bounded warmup completed` before exiting
+- the runtime summary should show non-zero `ExpectedFailure` counts for the two
+  explicit expected-failure probes when the target TiDB honors shared-lock FK
+  checking
 
 Notes:
 
@@ -74,6 +87,9 @@ Notes:
   3-second warmup.
 - If you leave `checker_enabled: true`, the command runs the checker after the
   bounded warmup completes. For a minimal smoke path, keep it `false`.
+- If you use a local playground for semantic verification, make sure the DSN
+  points at the TiDB SQL port; the driver itself now enables
+  `tidb_foreign_key_check_in_shared_lock` per transaction.
 
 ## Key Files
 
@@ -81,3 +97,4 @@ Notes:
 - `docs/runbooks/fk-upgrade-workload-driver.md`: operator runbook from the repo
   root
 - `cmd/fk-upgrade-driver/main.go`: current CLI entrypoint
+- `scripts/run-local-smoke.sh`: convenience wrapper for local bounded smoke
