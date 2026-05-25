@@ -15,7 +15,7 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
 )
 
-const WarmupPhase = "warmup"
+const RunPhase = "run"
 
 type scenarioCatalog interface {
 	All() []scenario.Scenario
@@ -39,32 +39,32 @@ func (t realTicker) Stop() {
 }
 
 type EngineConfig struct {
-	Session        db.Session
-	Registry       scenarioCatalog
-	Scheduler      Scheduler
-	SeedState      scenario.SeedState
-	Summary        *report.Summary
-	Progress       report.ProgressReporter
-	WarmupDuration time.Duration
-	After          func(time.Duration) <-chan time.Time
-	NewTicker      func(time.Duration) ticker
-	Now            func() time.Time
-	OnProgress     func(report.Snapshot)
+	Session     db.Session
+	Registry    scenarioCatalog
+	Scheduler   Scheduler
+	SeedState   scenario.SeedState
+	Summary     *report.Summary
+	Progress    report.ProgressReporter
+	RunDuration time.Duration
+	After       func(time.Duration) <-chan time.Time
+	NewTicker   func(time.Duration) ticker
+	Now         func() time.Time
+	OnProgress  func(report.Snapshot)
 }
 
 type Engine struct {
-	session        db.Session
-	registry       scenarioCatalog
-	scheduler      Scheduler
-	seedState      scenario.SeedState
-	summary        *report.Summary
-	progress       report.ProgressReporter
-	warmupDuration time.Duration
-	after          func(time.Duration) <-chan time.Time
-	newTicker      func(time.Duration) ticker
-	now            func() time.Time
-	onProgress     func(report.Snapshot)
-	stopRequested  atomic.Bool
+	session       db.Session
+	registry      scenarioCatalog
+	scheduler     Scheduler
+	seedState     scenario.SeedState
+	summary       *report.Summary
+	progress      report.ProgressReporter
+	runDuration   time.Duration
+	after         func(time.Duration) <-chan time.Time
+	newTicker     func(time.Duration) ticker
+	now           func() time.Time
+	onProgress    func(report.Snapshot)
+	stopRequested atomic.Bool
 }
 
 type workerPlan struct {
@@ -75,17 +75,17 @@ type workerPlan struct {
 
 func NewEngine(cfg EngineConfig) *Engine {
 	engine := &Engine{
-		session:        cfg.Session,
-		registry:       cfg.Registry,
-		scheduler:      cfg.Scheduler,
-		seedState:      cfg.SeedState,
-		summary:        cfg.Summary,
-		progress:       cfg.Progress,
-		warmupDuration: cfg.WarmupDuration,
-		after:          cfg.After,
-		newTicker:      cfg.NewTicker,
-		now:            cfg.Now,
-		onProgress:     cfg.OnProgress,
+		session:     cfg.Session,
+		registry:    cfg.Registry,
+		scheduler:   cfg.Scheduler,
+		seedState:   cfg.SeedState,
+		summary:     cfg.Summary,
+		progress:    cfg.Progress,
+		runDuration: cfg.RunDuration,
+		after:       cfg.After,
+		newTicker:   cfg.NewTicker,
+		now:         cfg.Now,
+		onProgress:  cfg.OnProgress,
 	}
 	if engine.after == nil {
 		engine.after = time.After
@@ -138,7 +138,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		e.requestStop(cancel)
 		wg.Wait()
 		return ctx.Err()
-	case <-e.after(e.warmupDuration):
+	case <-e.after(e.runDuration):
 		e.requestStop(cancel)
 		wg.Wait()
 		return nil
@@ -153,8 +153,8 @@ func (e *Engine) validate() error {
 		return errors.New("runner engine requires a scenario registry")
 	case e.summary == nil:
 		return errors.New("runner engine requires a report summary")
-	case e.warmupDuration < 0:
-		return errors.New("runner engine warmup duration must be non-negative")
+	case e.runDuration < 0:
+		return errors.New("runner engine duration must be non-negative")
 	default:
 		return nil
 	}
@@ -172,7 +172,7 @@ func (e *Engine) progressLoop(ctx context.Context, interval time.Duration, activ
 			if !ok {
 				return
 			}
-			e.progress.EmitSnapshot(WarmupPhase, activeWorkers, e.summary, tickAt, e.onProgress)
+			e.progress.EmitSnapshot(RunPhase, activeWorkers, e.summary, tickAt, e.onProgress)
 		}
 	}
 }

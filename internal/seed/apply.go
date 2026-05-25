@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
 )
@@ -37,10 +38,7 @@ type applyStatement struct {
 }
 
 func ApplyAll(ctx context.Context, db execer, cfg config.Config) (AppliedState, error) {
-	applied := AppliedState{
-		Generic:    GenericPlan(cfg),
-		PropertyMe: PropertyMePlan(cfg),
-	}
+	applied := BuildAppliedState(cfg)
 
 	for _, phase := range buildApplyPhases(applied) {
 		for _, stmt := range phase.statements {
@@ -51,11 +49,36 @@ func ApplyAll(ctx context.Context, db execer, cfg config.Config) (AppliedState, 
 		applied.CompletedPhases = append(applied.CompletedPhases, phase.name)
 	}
 
+	if _, err := db.ExecContext(
+		ctx,
+		"INSERT INTO fk_prepare_metadata (singleton_id, seed_plan_version, seed_parent_rows_per_table, seed_hot_parent_keys, prepared_at) VALUES (1, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE seed_plan_version = VALUES(seed_plan_version), seed_parent_rows_per_table = VALUES(seed_parent_rows_per_table), seed_hot_parent_keys = VALUES(seed_hot_parent_keys), prepared_at = VALUES(prepared_at)",
+		seedPlanVersion,
+		cfg.SeedParentRowsPerTable,
+		cfg.SeedHotParentKeys,
+		time.Now().UTC(),
+	); err != nil {
+		return applied, fmt.Errorf("%s: %w", phaseRecordPrepareMetadata, err)
+	}
+	applied.CompletedPhases = append(applied.CompletedPhases, phaseRecordPrepareMetadata)
+
 	return applied, nil
+}
+
+func BuildAppliedState(cfg config.Config) AppliedState {
+	return AppliedState{
+		Generic:    GenericPlan(cfg),
+		PropertyMe: PropertyMePlan(cfg),
+	}
 }
 
 func buildApplyPhases(applied AppliedState) []applyPhase {
 	return []applyPhase{
+		{
+			name: phaseApplyMetadataSchema,
+			statements: []applyStatement{
+				{query: createPrepareMetadataTableStatement},
+			},
+		},
 		{
 			name:       phaseApplyGenericSchema,
 			statements: genericSchemaStatements(),

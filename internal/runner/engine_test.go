@@ -40,13 +40,13 @@ func TestEngineRunExecutesWorkersAndRecordsSummary(t *testing.T) {
 	session := &stubSession{}
 	progress := report.NewProgressReporter(time.Second)
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1, FailureProbeWorkers: 1},
-		SeedState:      seedState,
-		Summary:        summary,
-		Progress:       progress,
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1, FailureProbeWorkers: 1},
+		SeedState:   seedState,
+		Summary:     summary,
+		Progress:    progress,
+		RunDuration: time.Minute,
 		After: func(time.Duration) <-chan time.Time {
 			return stopCh
 		},
@@ -130,13 +130,13 @@ func TestEngineRunEmitsRecurringProgressSnapshots(t *testing.T) {
 	stopCh := make(chan time.Time, 1)
 	var snapshots []report.Snapshot
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(250 * time.Millisecond),
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(250 * time.Millisecond),
+		RunDuration: time.Minute,
 		After: func(time.Duration) <-chan time.Time {
 			return stopCh
 		},
@@ -170,8 +170,8 @@ func TestEngineRunEmitsRecurringProgressSnapshots(t *testing.T) {
 		t.Fatalf("progress snapshots = %d, want 2", len(snapshots))
 	}
 	for _, snapshot := range snapshots {
-		if snapshot.Phase != WarmupPhase {
-			t.Fatalf("snapshot.Phase = %q, want %q", snapshot.Phase, WarmupPhase)
+		if snapshot.Phase != RunPhase {
+			t.Fatalf("snapshot.Phase = %q, want %q", snapshot.Phase, RunPhase)
 		}
 		if snapshot.ActiveWorkers != 1 {
 			t.Fatalf("snapshot.ActiveWorkers = %d, want 1", snapshot.ActiveWorkers)
@@ -179,19 +179,19 @@ func TestEngineRunEmitsRecurringProgressSnapshots(t *testing.T) {
 	}
 }
 
-func TestEngineRunStopsAtWarmupDeadlineDeterministically(t *testing.T) {
+func TestEngineRunStopsAtRunDeadlineDeterministically(t *testing.T) {
 	registry := newStubRegistry()
 	summary := report.NewSummary(nil)
 	session := &stubSession{}
 	stopCh := make(chan time.Time, 1)
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(time.Second),
-		WarmupDuration: 3 * time.Second,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: 3 * time.Second,
 		After: func(got time.Duration) <-chan time.Time {
 			if got != 3*time.Second {
 				t.Fatalf("After() duration = %v, want 3s", got)
@@ -234,13 +234,13 @@ func TestEngineRunIgnoresCanceledInFlightScenarioAfterStop(t *testing.T) {
 	summary := report.NewSummary(registry.All())
 	session := &stubSession{}
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(time.Second),
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: time.Minute,
 		After: func(time.Duration) <-chan time.Time {
 			return stopCh
 		},
@@ -319,13 +319,13 @@ func TestEngineRunRotatesWorkerAcrossGroupScenarios(t *testing.T) {
 	summary := report.NewSummary(registry.All())
 	session := &stubSession{}
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(time.Second),
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: time.Minute,
 		After: func(time.Duration) <-chan time.Time {
 			return make(chan time.Time)
 		},
@@ -377,13 +377,13 @@ func TestEngineRunWorkerStepSkipsBeginTxAfterCancellation(t *testing.T) {
 	summary := report.NewSummary(registry.All())
 	session := &stubSession{}
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(time.Second),
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: time.Minute,
 		Now: func() time.Time {
 			return time.Date(2026, time.May, 25, 12, 45, 0, 0, time.UTC)
 		},
@@ -621,13 +621,13 @@ func TestEngineClassifiesTransientBeginErrorsAsUnexpectedRuntimeFailures(t *test
 		},
 	}
 	engine := NewEngine(EngineConfig{
-		Session:        session,
-		Registry:       registry,
-		Scheduler:      Scheduler{GenericWorkers: 1},
-		SeedState:      scenario.SeedState{},
-		Summary:        summary,
-		Progress:       report.NewProgressReporter(time.Second),
-		WarmupDuration: time.Minute,
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: time.Minute,
 		After: func(time.Duration) <-chan time.Time {
 			return stopCh
 		},

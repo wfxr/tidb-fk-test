@@ -25,16 +25,19 @@ func TestApplyAllCreatesRealSchemaAndSeedsFixtureRows(t *testing.T) {
 	}
 
 	wantPhases := []string{
+		phaseApplyMetadataSchema,
 		phaseApplyGenericSchema,
 		phaseApplyPropertyMeSchema,
 		phaseSeedGenericFixtures,
 		phaseSeedPropertyMeFixtures,
+		phaseRecordPrepareMetadata,
 	}
 	if !reflect.DeepEqual(applied.CompletedPhases, wantPhases) {
 		t.Fatalf("CompletedPhases = %v, want %v", applied.CompletedPhases, wantPhases)
 	}
 
 	wantCreated := []string{
+		prepareMetadataTable,
 		"parent_basic",
 		"child_basic",
 		"child_rebind",
@@ -61,14 +64,15 @@ func TestApplyAllCreatesRealSchemaAndSeedsFixtureRows(t *testing.T) {
 	}
 
 	wantGenericRows := map[string]int{
-		"parent_basic":   len(applied.Generic.ParentIDs),
-		"child_basic":    len(applied.Generic.InsertExistingParentSlots) + len(applied.Generic.UpdateChildNoFKChangeSlots),
-		"child_rebind":   len(applied.Generic.RebindChildSlots) + len(applied.Generic.InsertParentThenUpdateChildSlots),
-		"parent_cascade": len(applied.Generic.DeleteParentCascadeSlots),
-		"child_cascade":  len(applied.Generic.DeleteParentCascadeSlots),
-		"parent_hot":     len(applied.Generic.HotParentIDs),
-		"child_hot":      len(applied.Generic.ConcurrentHotParentInsertSlots),
-		"probe_summary":  1,
+		prepareMetadataTable: 1,
+		"parent_basic":       len(applied.Generic.ParentIDs),
+		"child_basic":        len(applied.Generic.InsertExistingParentSlots) + len(applied.Generic.UpdateChildNoFKChangeSlots),
+		"child_rebind":       len(applied.Generic.RebindChildSlots) + len(applied.Generic.InsertParentThenUpdateChildSlots),
+		"parent_cascade":     len(applied.Generic.DeleteParentCascadeSlots),
+		"child_cascade":      len(applied.Generic.DeleteParentCascadeSlots),
+		"parent_hot":         len(applied.Generic.HotParentIDs),
+		"child_hot":          len(applied.Generic.ConcurrentHotParentInsertSlots),
+		"probe_summary":      1,
 	}
 	for table, want := range wantGenericRows {
 		if got := db.insertedRows[table]; got != want {
@@ -120,7 +124,7 @@ func TestApplyAllStopsAtFirstPhaseError(t *testing.T) {
 		t.Fatalf("expected multiple generic schema statements before failure, got %v", wantQueries)
 	}
 
-	wantPhases := []string{phaseApplyGenericSchema}
+	wantPhases := []string{phaseApplyMetadataSchema, phaseApplyGenericSchema}
 	if !reflect.DeepEqual(applied.CompletedPhases, wantPhases) {
 		t.Fatalf("CompletedPhases = %v, want %v", applied.CompletedPhases, wantPhases)
 	}
@@ -159,24 +163,25 @@ func (stubResult) LastInsertId() (int64, error) { return 0, nil }
 func (stubResult) RowsAffected() (int64, error) { return 0, nil }
 
 var insertColumnsPerRow = map[string]int{
-	"parent_basic":   2,
-	"child_basic":    3,
-	"child_rebind":   3,
-	"parent_cascade": 2,
-	"child_cascade":  3,
-	"parent_hot":     2,
-	"child_hot":      3,
-	"probe_summary":  3,
-	"customer":       2,
-	"folio":          3,
-	"journal":        6,
-	"posting":        4,
-	"bill":           7,
-	"payment":        5,
-	"foliobalance":   4,
-	"feelog":         4,
-	"statement":      5,
-	"withdrawal":     5,
+	prepareMetadataTable: 4,
+	"parent_basic":       2,
+	"child_basic":        3,
+	"child_rebind":       3,
+	"parent_cascade":     2,
+	"child_cascade":      3,
+	"parent_hot":         2,
+	"child_hot":          3,
+	"probe_summary":      3,
+	"customer":           2,
+	"folio":              3,
+	"journal":            6,
+	"posting":            4,
+	"bill":               7,
+	"payment":            5,
+	"foliobalance":       4,
+	"feelog":             4,
+	"statement":          5,
+	"withdrawal":         5,
 }
 
 type recordingExec struct {

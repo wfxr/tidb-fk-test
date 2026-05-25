@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -151,6 +152,34 @@ func TestClusterRefreshesLivenessAfterNodeDies(t *testing.T) {
 	}
 }
 
+func TestOpenClusterReturnsPreflightErrorBeforeHealthcheckTimeout(t *testing.T) {
+	state := newFakeClusterState()
+	state.setAlive("node-a", true)
+	state.setQueryError("node-a", "SELECT 1", errors.New("unknown database 'wrong_db'"))
+
+	driverName := registerFakeClusterDriver(t, state)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err := openCluster(ctx, clusterConfig{
+		DriverName:     driverName,
+		DSNs:           []string{"node-a"},
+		UpdateInterval: 10 * time.Millisecond,
+		UpdateTimeout:  10 * time.Millisecond,
+		StartupWait:    50 * time.Millisecond,
+		SessionInitSQL: enableSharedLockFKCheckSQL,
+	})
+	if err == nil {
+		t.Fatal("openCluster() error = nil, want preflight error")
+	}
+	if !strings.Contains(err.Error(), "unknown database 'wrong_db'") {
+		t.Fatalf("openCluster() error = %q, want preflight database error", err)
+	}
+	if strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("openCluster() error = %q, should not be hidden by startup timeout", err)
+	}
+}
+
 func openTestCluster(t *testing.T, state *fakeClusterState, dsns []string) *Cluster {
 	t.Helper()
 
@@ -268,6 +297,9 @@ func (c *fakeClusterConn) QueryContext(_ context.Context, query string, _ []driv
 	if !c.state.isAlive(c.dsn) {
 		return nil, fmt.Errorf("node %s is down", c.dsn)
 	}
+	if err := c.state.queryError(c.dsn, query); err != nil {
+		return nil, err
+	}
 	if c.currentTxID != 0 {
 		c.state.recordTxQuery(c.dsn, c.currentTxID, query)
 		return rowsForQuery(c.dsn, query), nil
@@ -356,6 +388,7 @@ type fakeClusterState struct {
 	beginFail     map[string]int
 	execs         map[string][]string
 	queries       map[string][]string
+	queryErrs     map[string]map[string]error
 	txQueriesByID map[string]map[int64][]string
 	nextTxID      int64
 }
@@ -367,6 +400,7 @@ func newFakeClusterState() *fakeClusterState {
 		beginFail:     make(map[string]int),
 		execs:         make(map[string][]string),
 		queries:       make(map[string][]string),
+		queryErrs:     make(map[string]map[string]error),
 		txQueriesByID: make(map[string]map[int64][]string),
 	}
 }
@@ -410,6 +444,24 @@ func (s *fakeClusterState) recordQuery(dsn, query string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queries[dsn] = append(s.queries[dsn], query)
+}
+
+func (s *fakeClusterState) setQueryError(dsn, query string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.queryErrs[dsn] == nil {
+		s.queryErrs[dsn] = make(map[string]error)
+	}
+	s.queryErrs[dsn][query] = err
+}
+
+func (s *fakeClusterState) queryError(dsn, query string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.queryErrs[dsn] == nil {
+		return nil
+	}
+	return s.queryErrs[dsn][query]
 }
 
 func (s *fakeClusterState) recordTxQuery(dsn string, txID int64, query string) {

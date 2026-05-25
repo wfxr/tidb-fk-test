@@ -69,6 +69,11 @@ func openCluster(ctx context.Context, cfg clusterConfig) (*Cluster, error) {
 		nodes = append(nodes, hasql.NewNode(fmt.Sprintf("tidb-%d", i+1), db))
 	}
 
+	if err := preflightCluster(ctx, openedDBs, cfg.StartupWait); err != nil {
+		closeAllDBs(openedDBs)
+		return nil, err
+	}
+
 	cl, err := hasql.NewCluster(
 		hasql.NewStaticNodeDiscoverer(nodes...),
 		tidbChecker,
@@ -232,6 +237,36 @@ func defaultDuration(value, fallback time.Duration) time.Duration {
 		return value
 	}
 	return fallback
+}
+
+func preflightCluster(ctx context.Context, dbs []*sql.DB, startupWait time.Duration) error {
+	if len(dbs) == 0 {
+		return errors.New("at least one dsn is required")
+	}
+
+	timeout := time.Second
+	if startupWait > 0 && startupWait < timeout {
+		timeout = startupWait
+	}
+
+	var errs []error
+	for _, db := range dbs {
+		checkCtx := ctx
+		cancel := func() {}
+		if timeout > 0 {
+			checkCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
+
+		var reachable int
+		err := db.QueryRowContext(checkCtx, "SELECT 1").Scan(&reachable)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		errs = append(errs, err)
+	}
+
+	return fmt.Errorf("preflight failed: %w", errors.Join(errs...))
 }
 
 func tidbChecker(ctx context.Context, db hasql.Querier) (hasql.NodeInfoProvider, error) {

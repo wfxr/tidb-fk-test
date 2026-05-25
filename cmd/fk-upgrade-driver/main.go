@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
+	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/spf13/cobra"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
 	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
@@ -19,52 +23,319 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
 
-func main() {
-	configPath := flag.String("config", "", "path to config file")
-	flag.Parse()
+type connectionOptions struct {
+	Nodes    string
+	User     string
+	Password string
+	DB       string
+}
 
-	if err := run(context.Background(), *configPath, time.Now()); err != nil {
-		slog.Error("fk upgrade driver failed", "path", *configPath, "error", err)
+type prepareOptions struct {
+	connectionOptions
+	SeedParentRowsPerTable int
+	SeedHotParentKeys      int
+}
+
+type runOptions struct {
+	connectionOptions
+	Duration               time.Duration
+	ProgressReportInterval time.Duration
+	GenericWorkers         int
+	PropertyMeWorkers      int
+	FailureProbeWorkers    int
+}
+
+type clusterConn interface {
+	dbpkg.Session
+	dbpkg.Execer
+	dbpkg.Queryer
+	Close() error
+}
+
+type preparedMetadataReader interface {
+	dbpkg.Queryer
+}
+
+type commandDeps struct {
+	now                  func() time.Time
+	openCluster          func(context.Context, []string) (clusterConn, error)
+	prepare              func(context.Context, config.Config, clusterConn) (seed.AppliedState, error)
+	run                  func(context.Context, config.Config, time.Time, clusterConn) error
+	readPreparedMetadata func(context.Context, preparedMetadataReader) (seed.PreparedMetadata, error)
+	validatePrepared     func(context.Context, preparedMetadataReader, seed.AppliedState) error
+}
+
+func main() {
+	cmd := newRootCommand(defaultCommandDeps())
+	if err := cmd.Execute(); err != nil {
+		slog.Error("fk upgrade driver failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, configPath string, now time.Time) error {
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return err
+func defaultCommandDeps() commandDeps {
+	return commandDeps{
+		now: func() time.Time { return time.Now().UTC() },
+		openCluster: func(ctx context.Context, dsns []string) (clusterConn, error) {
+			return dbpkg.OpenTiDBCluster(ctx, dsns)
+		},
+		prepare: func(ctx context.Context, cfg config.Config, db clusterConn) (seed.AppliedState, error) {
+			return seed.ApplyAll(ctx, db, cfg)
+		},
+		run: func(ctx context.Context, cfg config.Config, now time.Time, db clusterConn) error {
+			return runWorkload(ctx, cfg, now, db)
+		},
+		readPreparedMetadata: func(ctx context.Context, reader preparedMetadataReader) (seed.PreparedMetadata, error) {
+			return seed.ReadPreparedMetadata(ctx, reader)
+		},
+		validatePrepared: func(ctx context.Context, reader preparedMetadataReader, applied seed.AppliedState) error {
+			return seed.ValidatePreparedState(ctx, reader, applied)
+		},
+	}
+}
+
+func newRootCommand(deps commandDeps) *cobra.Command {
+	if deps.now == nil {
+		deps.now = func() time.Time { return time.Now().UTC() }
 	}
 
-	db, err := dbpkg.OpenTiDBCluster(ctx, cfg.DSN)
-	if err != nil {
-		return err
+	var legacyConfig string
+	rootCmd := &cobra.Command{
+		Use:           "fk-upgrade-driver",
+		Short:         "Run the foreign-key workload prepare/run flow",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(*cobra.Command, []string) error {
+			if legacyConfig != "" {
+				return errors.New("config files are no longer supported; use prepare/run flags")
+			}
+			return nil
+		},
 	}
-	defer db.Close()
+	rootCmd.PersistentFlags().StringVar(&legacyConfig, "config", "", "legacy config file path")
+	_ = rootCmd.PersistentFlags().MarkHidden("config")
 
-	applied, err := seed.ApplyAll(ctx, db, cfg)
-	if err != nil {
-		return err
+	rootCmd.AddCommand(newPrepareCommand(deps))
+	rootCmd.AddCommand(newRunCommand(deps))
+	return rootCmd
+}
+
+func newPrepareCommand(deps commandDeps) *cobra.Command {
+	cfgDefaults := config.Default()
+	opts := prepareOptions{
+		SeedParentRowsPerTable: cfgDefaults.SeedParentRowsPerTable,
+		SeedHotParentKeys:      cfgDefaults.SeedHotParentKeys,
 	}
 
+	cmd := &cobra.Command{
+		Use:   "prepare",
+		Short: "Create schema, seed fixtures, and record prepared metadata",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := buildPrepareConfig(opts)
+			if err != nil {
+				return err
+			}
+			db, err := deps.openCluster(cmd.Context(), cfg.DSN)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			applied, err := deps.prepare(cmd.Context(), cfg, db)
+			if err != nil {
+				return err
+			}
+			slog.Info(
+				"prepare completed",
+				"nodes", len(cfg.DSN),
+				"completed_phases", applied.CompletedPhases,
+				"seed_plan_version", seed.SeedPlanVersion,
+				"seed_parent_rows_per_table", cfg.SeedParentRowsPerTable,
+				"seed_hot_parent_keys", cfg.SeedHotParentKeys,
+			)
+			return nil
+		},
+	}
+	addConnectionFlags(cmd, &opts.connectionOptions)
+	cmd.Flags().IntVarP(&opts.SeedParentRowsPerTable, "seed-parent-rows-per-table", "r", opts.SeedParentRowsPerTable, "number of deterministic parent/customer rows to seed")
+	cmd.Flags().IntVarP(&opts.SeedHotParentKeys, "seed-hot-parent-keys", "k", opts.SeedHotParentKeys, "number of hot parent keys to reserve for contention scenarios")
+	return cmd
+}
+
+func newRunCommand(deps commandDeps) *cobra.Command {
+	cfgDefaults := config.Default()
+	opts := runOptions{
+		Duration:               cfgDefaults.RunDuration,
+		ProgressReportInterval: cfgDefaults.ProgressReportInterval,
+		GenericWorkers:         cfgDefaults.GenericWorkers,
+		PropertyMeWorkers:      cfgDefaults.PropertyMeWorkers,
+		FailureProbeWorkers:    cfgDefaults.FailureProbeWorkers,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "Execute workload against a previously prepared database and run checks",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+			baseCfg, err := buildRunConfig(opts, seed.PreparedMetadata{})
+			if err != nil {
+				return err
+			}
+			db, err := deps.openCluster(ctx, baseCfg.DSN)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			metadata, err := deps.readPreparedMetadata(ctx, db)
+			if err != nil {
+				if errors.Is(err, seed.ErrPrepareMetadataNotFound) {
+					return fmt.Errorf("prepare metadata not found: run `fk-upgrade-driver prepare` first")
+				}
+				return err
+			}
+			if metadata.SeedPlanVersion != seed.SeedPlanVersion {
+				return fmt.Errorf(
+					"prepare metadata seed plan version %d is incompatible with binary version %d; rerun `fk-upgrade-driver prepare`",
+					metadata.SeedPlanVersion,
+					seed.SeedPlanVersion,
+				)
+			}
+
+			cfg, err := buildRunConfig(opts, metadata)
+			if err != nil {
+				return err
+			}
+			applied := seed.BuildAppliedState(cfg)
+			if err := deps.validatePrepared(ctx, db, applied); err != nil {
+				return err
+			}
+			return deps.run(ctx, cfg, deps.now(), db)
+		},
+	}
+	addConnectionFlags(cmd, &opts.connectionOptions)
+	cmd.Flags().DurationVarP(&opts.Duration, "duration", "d", opts.Duration, "how long to run workload execution")
+	cmd.Flags().DurationVarP(&opts.ProgressReportInterval, "progress-report-interval", "i", opts.ProgressReportInterval, "interval between workload progress snapshots")
+	cmd.Flags().IntVarP(&opts.GenericWorkers, "generic-workers", "g", opts.GenericWorkers, "number of generic scenario workers")
+	cmd.Flags().IntVarP(&opts.PropertyMeWorkers, "propertyme-workers", "m", opts.PropertyMeWorkers, "number of PropertyMe scenario workers")
+	cmd.Flags().IntVarP(&opts.FailureProbeWorkers, "failure-probe-workers", "f", opts.FailureProbeWorkers, "number of failure probe workers")
+	return cmd
+}
+
+func addConnectionFlags(cmd *cobra.Command, opts *connectionOptions) {
+	cmd.Flags().StringVarP(&opts.Nodes, "nodes", "n", "", "comma-separated TiDB nodes in host:port form")
+	cmd.Flags().StringVarP(&opts.User, "user", "u", "root", "database user")
+	cmd.Flags().StringVarP(&opts.Password, "password", "p", "", "database password")
+	cmd.Flags().StringVarP(&opts.DB, "db", "D", "test", "database name")
+	_ = cmd.MarkFlagRequired("nodes")
+}
+
+func buildPrepareConfig(opts prepareOptions) (config.Config, error) {
+	cfg := config.Default()
+	dsns, err := buildDSNs(opts.connectionOptions)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg.DSN = dsns
+	cfg.SeedParentRowsPerTable = opts.SeedParentRowsPerTable
+	cfg.SeedHotParentKeys = opts.SeedHotParentKeys
+	return cfg, nil
+}
+
+func buildRunConfig(opts runOptions, metadata seed.PreparedMetadata) (config.Config, error) {
+	cfg := config.Default()
+	dsns, err := buildDSNs(opts.connectionOptions)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg.DSN = dsns
+	cfg.RunDuration = opts.Duration
+	cfg.ProgressReportInterval = opts.ProgressReportInterval
+	cfg.GenericWorkers = opts.GenericWorkers
+	cfg.PropertyMeWorkers = opts.PropertyMeWorkers
+	cfg.FailureProbeWorkers = opts.FailureProbeWorkers
+	if metadata.SeedParentRowsPerTable != 0 {
+		cfg.SeedParentRowsPerTable = metadata.SeedParentRowsPerTable
+	}
+	if metadata.SeedHotParentKeys != 0 {
+		cfg.SeedHotParentKeys = metadata.SeedHotParentKeys
+	}
+	return cfg, nil
+}
+
+func buildDSNs(opts connectionOptions) ([]string, error) {
+	if strings.TrimSpace(opts.Nodes) == "" {
+		return nil, errors.New("--nodes is required")
+	}
+	if strings.TrimSpace(opts.User) == "" {
+		return nil, errors.New("--user is required")
+	}
+	if strings.TrimSpace(opts.DB) == "" {
+		return nil, errors.New("--db is required")
+	}
+
+	endpoints, err := parseNodes(opts.Nodes)
+	if err != nil {
+		return nil, err
+	}
+	dsns := make([]string, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		credentials := opts.User
+		if opts.Password != "" {
+			credentials += ":" + opts.Password
+		}
+		dsns = append(dsns, fmt.Sprintf("%s@tcp(%s:%d)/%s", credentials, endpoint.Host, endpoint.Port, opts.DB))
+	}
+	return dsns, nil
+}
+
+type nodeEndpoint struct {
+	Host string
+	Port int
+}
+
+func parseNodes(value string) ([]nodeEndpoint, error) {
+	parts := strings.Split(value, ",")
+	endpoints := make([]nodeEndpoint, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("--nodes contains an empty entry: %q", value)
+		}
+		host, portText, err := net.SplitHostPort(part)
+		if err != nil {
+			return nil, fmt.Errorf("--nodes entry %q must be in host:port form", part)
+		}
+		port, err := strconv.Atoi(portText)
+		if err != nil || port <= 0 {
+			return nil, fmt.Errorf("--nodes entry %q has invalid port %q", part, portText)
+		}
+		if strings.TrimSpace(host) == "" {
+			return nil, fmt.Errorf("--nodes entry %q has an empty host", part)
+		}
+		endpoints = append(endpoints, nodeEndpoint{Host: host, Port: port})
+	}
+	return endpoints, nil
+}
+
+func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clusterConn) error {
 	registry := scenario.NewRegistry()
 	scenarios := registry.All()
 	runtimeSummary := report.NewSummary(scenarios)
 	scheduler := runner.NewScheduler(cfg)
 	progressReporter := report.NewProgressReporter(cfg.ProgressReportInterval)
-	initialSnapshot := progressReporter.BuildSnapshot("warmup", scheduler.TotalWorkers(), runtimeSummary, now)
+	initialSnapshot := progressReporter.BuildSnapshot(runner.RunPhase, scheduler.TotalWorkers(), runtimeSummary, now)
+	applied := seed.BuildAppliedState(cfg)
 
 	slog.Info(
-		"starting fk upgrade driver skeleton",
-		"config_path", configPath,
-		"seed_phases", applied.CompletedPhases,
+		"starting fk upgrade driver",
+		"seed_plan_version", seed.SeedPlanVersion,
 		"total_workers", scheduler.TotalWorkers(),
 		"progress_report_interval", progressReporter.Interval(),
-		"warmup_duration", cfg.WarmupDuration,
-		"post_upgrade_duration", cfg.PostUpgradeDuration,
+		"duration", cfg.RunDuration,
 		"initial_phase", initialSnapshot.Phase,
 		"initial_executed", initialSnapshot.TotalExecuted,
 		"scenario_count", len(scenarios),
-		"checker_enabled", cfg.CheckerEnabled,
 	)
 
 	engine := runner.NewEngine(runner.EngineConfig{
@@ -75,13 +346,13 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 			Generic:    applied.Generic,
 			PropertyMe: applied.PropertyMe,
 		},
-		Summary:        runtimeSummary,
-		Progress:       progressReporter,
-		WarmupDuration: cfg.WarmupDuration,
-		Now:            time.Now,
+		Summary:     runtimeSummary,
+		Progress:    progressReporter,
+		RunDuration: cfg.RunDuration,
+		Now:         time.Now,
 		OnProgress: func(snapshot report.Snapshot) {
 			slog.Info(
-				"warmup progress snapshot",
+				"run progress snapshot",
 				"phase", snapshot.Phase,
 				"active_workers", snapshot.ActiveWorkers,
 				"total_executed", snapshot.TotalExecuted,
@@ -96,12 +367,8 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		return err
 	}
 
-	warmupSummary := progressReporter.BuildSnapshot(runner.WarmupPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
-	printWarmupSummary(os.Stdout, warmupSummary, runtimeSummary.Scenarios())
-
-	if !cfg.CheckerEnabled {
-		return nil
-	}
+	runSummary := progressReporter.BuildSnapshot(runner.RunPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
+	printRunSummary(os.Stdout, runSummary, runtimeSummary.Scenarios())
 
 	if err := syncProbeSummary(ctx, db, runtimeSummary); err != nil {
 		return err
@@ -113,16 +380,15 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 	}
 
 	printCheckerSummary(os.Stdout, checkSummary)
-
 	return nil
 }
 
-func printWarmupSummary(out *os.File, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
+func printRunSummary(out *os.File, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
 	expectedOutcomes := snapshot.Success + snapshot.ExpectedFailure
 
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Warmup Summary")
-	fmt.Fprintln(out, "==============")
+	fmt.Fprintln(out, "Run Summary")
+	fmt.Fprintln(out, "===========")
 	fmt.Fprintf(out, "Phase: %s\n", snapshot.Phase)
 	fmt.Fprintf(out, "Workers: %d\n", snapshot.ActiveWorkers)
 	fmt.Fprintf(out, "Executed: %d\n", snapshot.TotalExecuted)

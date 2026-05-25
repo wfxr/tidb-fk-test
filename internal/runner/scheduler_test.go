@@ -16,13 +16,21 @@ func TestNewSchedulerBuildsFixedWorkerGroups(t *testing.T) {
 	if scheduler.ProgressInterval != cfg.ProgressReportInterval {
 		t.Fatalf("ProgressInterval = %v, want %v", scheduler.ProgressInterval, cfg.ProgressReportInterval)
 	}
-	if scheduler.TotalWorkers() != cfg.TotalWorkers {
-		t.Fatalf("TotalWorkers() = %d, want %d", scheduler.TotalWorkers(), cfg.TotalWorkers)
+	if scheduler.TotalWorkers() != cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers {
+		t.Fatalf(
+			"TotalWorkers() = %d, want %d",
+			scheduler.TotalWorkers(),
+			cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers,
+		)
 	}
 
 	workers := scheduler.Workers()
-	if len(workers) != cfg.TotalWorkers {
-		t.Fatalf("len(Workers()) = %d, want %d", len(workers), cfg.TotalWorkers)
+	if len(workers) != cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers {
+		t.Fatalf(
+			"len(Workers()) = %d, want %d",
+			len(workers),
+			cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers,
+		)
 	}
 
 	wantGroups := []scenario.Group{
@@ -50,7 +58,6 @@ func TestNewSchedulerPreservesConfiguredCounts(t *testing.T) {
 	cfg.GenericWorkers = 2
 	cfg.PropertyMeWorkers = 1
 	cfg.FailureProbeWorkers = 1
-	cfg.TotalWorkers = 4
 	cfg.ProgressReportInterval = 15 * time.Second
 
 	scheduler := NewScheduler(cfg)
