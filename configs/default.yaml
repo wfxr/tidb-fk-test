@@ -1,0 +1,17 @@
+dsn: ""
+total_workers: 8
+generic_workers: 4
+propertyme_workers: 3
+failure_probe_workers: 1
+generic_weight: 60
+propertyme_weight: 35
+failure_probe_weight: 5
+warmup_duration: 15m
+post_upgrade_duration: 20m
+failure_probe_interval: 10s
+progress_report_interval: 10s
+scenario_timeout: 30s
+max_retry: 0
+seed_parent_rows_per_table: 1000
+seed_hot_parent_keys: 16
+checker_enabled: true
