@@ -1,0 +1,109 @@
+global:
+  user: "__DEPLOY_USER__"
+  systemd_mode: "user"
+  ssh_port: 22
+  deploy_dir: "__RUNTIME_ROOT__/global/deploy"
+  data_dir: "__RUNTIME_ROOT__/global/data"
+  listen_host: 127.0.0.1
+  arch: "amd64"
+
+monitored:
+  node_exporter_port: __NODE_EXPORTER_PORT__
+  blackbox_exporter_port: __BLACKBOX_EXPORTER_PORT__
+  deploy_dir: "__RUNTIME_ROOT__/monitored/deploy"
+  data_dir: "__RUNTIME_ROOT__/monitored/data"
+  log_dir: "__RUNTIME_ROOT__/monitored/log"
+
+server_configs:
+  pd:
+    replication.location-labels: ["host"]
+
+pd_servers:
+  - host: 127.0.0.1
+    name: "pd-1"
+    client_port: __PD_CLIENT_1__
+    peer_port: __PD_PEER_1__
+    deploy_dir: "__RUNTIME_ROOT__/pd-1/deploy"
+    data_dir: "__RUNTIME_ROOT__/pd-1/data"
+    log_dir: "__RUNTIME_ROOT__/pd-1/log"
+  - host: 127.0.0.1
+    name: "pd-2"
+    client_port: __PD_CLIENT_2__
+    peer_port: __PD_PEER_2__
+    deploy_dir: "__RUNTIME_ROOT__/pd-2/deploy"
+    data_dir: "__RUNTIME_ROOT__/pd-2/data"
+    log_dir: "__RUNTIME_ROOT__/pd-2/log"
+  - host: 127.0.0.1
+    name: "pd-3"
+    client_port: __PD_CLIENT_3__
+    peer_port: __PD_PEER_3__
+    deploy_dir: "__RUNTIME_ROOT__/pd-3/deploy"
+    data_dir: "__RUNTIME_ROOT__/pd-3/data"
+    log_dir: "__RUNTIME_ROOT__/pd-3/log"
+
+tidb_servers:
+  - host: 127.0.0.1
+    port: __TIDB_PORT_1__
+    status_port: __TIDB_STATUS_1__
+    deploy_dir: "__RUNTIME_ROOT__/tidb-1/deploy"
+    log_dir: "__RUNTIME_ROOT__/tidb-1/log"
+  - host: 127.0.0.1
+    port: __TIDB_PORT_2__
+    status_port: __TIDB_STATUS_2__
+    deploy_dir: "__RUNTIME_ROOT__/tidb-2/deploy"
+    log_dir: "__RUNTIME_ROOT__/tidb-2/log"
+  - host: 127.0.0.1
+    port: __TIDB_PORT_3__
+    status_port: __TIDB_STATUS_3__
+    deploy_dir: "__RUNTIME_ROOT__/tidb-3/deploy"
+    log_dir: "__RUNTIME_ROOT__/tidb-3/log"
+
+tikv_servers:
+  - host: 127.0.0.1
+    port: __TIKV_PORT_1__
+    status_port: __TIKV_STATUS_1__
+    deploy_dir: "__RUNTIME_ROOT__/tikv-1/deploy"
+    data_dir: "__RUNTIME_ROOT__/tikv-1/data"
+    log_dir: "__RUNTIME_ROOT__/tikv-1/log"
+    config:
+      server.labels:
+        host: "tikv-1"
+  - host: 127.0.0.1
+    port: __TIKV_PORT_2__
+    status_port: __TIKV_STATUS_2__
+    deploy_dir: "__RUNTIME_ROOT__/tikv-2/deploy"
+    data_dir: "__RUNTIME_ROOT__/tikv-2/data"
+    log_dir: "__RUNTIME_ROOT__/tikv-2/log"
+    config:
+      server.labels:
+        host: "tikv-2"
+  - host: 127.0.0.1
+    port: __TIKV_PORT_3__
+    status_port: __TIKV_STATUS_3__
+    deploy_dir: "__RUNTIME_ROOT__/tikv-3/deploy"
+    data_dir: "__RUNTIME_ROOT__/tikv-3/data"
+    log_dir: "__RUNTIME_ROOT__/tikv-3/log"
+    config:
+      server.labels:
+        host: "tikv-3"
+
+monitoring_servers:
+  - host: 127.0.0.1
+    port: __PROMETHEUS_PORT__
+    ng_port: __NG_MONITORING_PORT__
+    deploy_dir: "__RUNTIME_ROOT__/prometheus/deploy"
+    data_dir: "__RUNTIME_ROOT__/prometheus/data"
+    log_dir: "__RUNTIME_ROOT__/prometheus/log"
+
+grafana_servers:
+  - host: 127.0.0.1
+    port: __GRAFANA_PORT__
+    deploy_dir: "__RUNTIME_ROOT__/grafana/deploy"
+
+alertmanager_servers:
+  - host: 127.0.0.1
+    web_port: __ALERTMANAGER_WEB_PORT__
+    cluster_port: __ALERTMANAGER_CLUSTER_PORT__
+    deploy_dir: "__RUNTIME_ROOT__/alertmanager/deploy"
+    data_dir: "__RUNTIME_ROOT__/alertmanager/data"
+    log_dir: "__RUNTIME_ROOT__/alertmanager/log"

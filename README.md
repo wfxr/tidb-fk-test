@@ -96,4 +96,6 @@ Notes:
 
 - `docs/runbooks/fk-upgrade-workload-driver.md`: operator runbook from the repo
   root
+- `docs/runbooks/tiup-local-upgrade-scripts.md`: local TiUP cluster create and
+  upgrade script runbook
 - `cmd/fk-upgrade-driver/main.go`: current CLI entrypoint
