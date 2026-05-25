@@ -14,6 +14,8 @@ func (r ProgressReporter) Interval() time.Duration {
 	return r.interval
 }
 
+type SnapshotEmitter func(Snapshot)
+
 type Snapshot struct {
 	Timestamp         time.Time `json:"timestamp"`
 	Phase             string    `json:"phase"`
@@ -39,4 +41,18 @@ func (r ProgressReporter) BuildSnapshot(phase string, activeWorkers int, summary
 		ExpectedFailure:   totals.ExpectedFailure,
 		UnexpectedFailure: totals.UnexpectedFailure,
 	}
+}
+
+func (r ProgressReporter) EmitSnapshot(
+	phase string,
+	activeWorkers int,
+	summary *Summary,
+	now time.Time,
+	emit SnapshotEmitter,
+) Snapshot {
+	snapshot := r.BuildSnapshot(phase, activeWorkers, summary, now)
+	if emit != nil {
+		emit(snapshot)
+	}
+	return snapshot
 }

@@ -76,6 +76,12 @@ func (s *Summary) Record(meta scenario.Metadata, result model.Result, at time.Ti
 	s.scenarios[meta.Name] = stats
 }
 
+func (s *Summary) RecordClassified(meta scenario.Metadata, err error, at time.Time) model.Result {
+	result := model.Classify(meta.ExpectedErrorMatch, err)
+	s.Record(meta, result, at)
+	return result
+}
+
 func (s *Summary) Totals() Totals {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
