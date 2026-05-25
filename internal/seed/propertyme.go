@@ -65,6 +65,12 @@ type PaymentBillUpdateProbeSlot struct {
 	PaymentID  int64
 }
 
+type StatementFolioParentUpdateProbeSlot struct {
+	CustomerID  int64
+	FolioID     int64
+	StatementID int64
+}
+
 type PropertyMeSeedPlan struct {
 	CustomerIDs []int64
 	FolioIDs    []int64
@@ -74,12 +80,13 @@ type PropertyMeSeedPlan struct {
 	ExistingJournalID  int64
 	ExistingBillID     int64
 
-	JournalPostingBillSlots     []JournalPostingBillSlot
-	FolioBalanceUpdateSlots     []FolioBalanceUpdateSlot
-	FKBackfillSlots             []FKBackfillSlot
-	PaymentMixedReferenceSlots  []PaymentMixedReferenceSlot
-	CascadePathSlots            []CascadePathSlot
-	PaymentBillUpdateProbeSlots []PaymentBillUpdateProbeSlot
+	JournalPostingBillSlots              []JournalPostingBillSlot
+	FolioBalanceUpdateSlots              []FolioBalanceUpdateSlot
+	FKBackfillSlots                      []FKBackfillSlot
+	PaymentMixedReferenceSlots           []PaymentMixedReferenceSlot
+	CascadePathSlots                     []CascadePathSlot
+	PaymentBillUpdateProbeSlots          []PaymentBillUpdateProbeSlot
+	StatementFolioParentUpdateProbeSlots []StatementFolioParentUpdateProbeSlot
 }
 
 func PropertyMePlan(cfg config.Config) PropertyMeSeedPlan {
@@ -121,6 +128,11 @@ func PropertyMePlan(cfg config.Config) PropertyMeSeedPlan {
 		plan.ExistingBillID,
 		plan.ExistingJournalID,
 		18001,
+	)
+	plan.StatementFolioParentUpdateProbeSlots = buildStatementFolioParentUpdateProbeSlots(
+		customerIDs,
+		folioIDs,
+		23001,
 	)
 
 	return plan
@@ -454,6 +466,21 @@ func buildPaymentBillUpdateProbeSlots(
 			BillID:     billID,
 			JournalID:  journalID,
 			PaymentID:  firstPaymentID + int64(i),
+		})
+	}
+	return slots
+}
+
+func buildStatementFolioParentUpdateProbeSlots(
+	customerIDs, folioIDs []int64,
+	firstStatementID int64,
+) []StatementFolioParentUpdateProbeSlot {
+	slots := make([]StatementFolioParentUpdateProbeSlot, 0, propertyMeFixturePoolSize)
+	for i := 0; i < propertyMeFixturePoolSize; i++ {
+		slots = append(slots, StatementFolioParentUpdateProbeSlot{
+			CustomerID:  customerIDs[i%len(customerIDs)],
+			FolioID:     folioIDs[i%len(folioIDs)],
+			StatementID: firstStatementID + int64(i),
 		})
 	}
 	return slots

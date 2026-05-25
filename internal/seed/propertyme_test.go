@@ -56,6 +56,15 @@ func TestPropertyMePlanUsesDeterministicCoreIDsAndFixtures(t *testing.T) {
 	}) {
 		t.Fatalf("first PaymentBillUpdateProbeSlots entry = %+v", firstProbe)
 	}
+
+	firstParentUpdateProbe := plan.StatementFolioParentUpdateProbeSlots[0]
+	if firstParentUpdateProbe != (StatementFolioParentUpdateProbeSlot{
+		CustomerID:  1,
+		FolioID:     1001,
+		StatementID: 23001,
+	}) {
+		t.Fatalf("first StatementFolioParentUpdateProbeSlots entry = %+v", firstParentUpdateProbe)
+	}
 }
 
 func TestPropertyMePlanBuildsFixturePoolsForCustomerScenarios(t *testing.T) {
@@ -81,6 +90,9 @@ func TestPropertyMePlanBuildsFixturePoolsForCustomerScenarios(t *testing.T) {
 	if got, want := len(plan.PaymentBillUpdateProbeSlots), propertyMeFixturePoolSize; got != want {
 		t.Fatalf("len(PaymentBillUpdateProbeSlots) = %d, want %d", got, want)
 	}
+	if got, want := len(plan.StatementFolioParentUpdateProbeSlots), propertyMeFixturePoolSize; got != want {
+		t.Fatalf("len(StatementFolioParentUpdateProbeSlots) = %d, want %d", got, want)
+	}
 }
 
 func TestPropertyMePlanDoesNotFabricateFixturesWithoutCustomers(t *testing.T) {
@@ -99,5 +111,8 @@ func TestPropertyMePlanDoesNotFabricateFixturesWithoutCustomers(t *testing.T) {
 	}
 	if got := len(plan.PaymentBillUpdateProbeSlots); got != 0 {
 		t.Fatalf("len(PaymentBillUpdateProbeSlots) = %d, want 0", got)
+	}
+	if got := len(plan.StatementFolioParentUpdateProbeSlots); got != 0 {
+		t.Fatalf("len(StatementFolioParentUpdateProbeSlots) = %d, want 0", got)
 	}
 }

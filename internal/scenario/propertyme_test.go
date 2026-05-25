@@ -201,7 +201,6 @@ func TestPMFKBackfillOrder(t *testing.T) {
 		"INSERT INTO bill (id, journal_id, folio_id, status, total_cents, paid_cents) VALUES (?, ?, ?, ?, ?, ?)",
 		"UPDATE feelog SET fee_bill_id = ? WHERE id = ?",
 		"INSERT INTO statement (id, customer_id, folio_id, status, balance_cents) VALUES (?, ?, ?, ?, ?)",
-		"UPDATE folio SET last_statement_id = ? WHERE id = ?",
 		"UPDATE withdrawal SET statement_id = ? WHERE id = ?",
 	}
 	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
@@ -218,7 +217,6 @@ func TestPMFKBackfillOrder(t *testing.T) {
 		{slot.BillID, slot.JournalID, slot.FolioID, "open", int64(225), int64(0)},
 		{slot.BillID, slot.FeeLogID},
 		{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)},
-		{slot.StatementID, slot.FolioID},
 		{slot.StatementID, slot.WithdrawalID},
 	}
 	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
@@ -363,6 +361,10 @@ func testPropertyMeSeedState() SeedState {
 			PaymentBillUpdateProbeSlots: []seed.PaymentBillUpdateProbeSlot{
 				{CustomerID: 1, FolioID: 1001, BillID: 4001, JournalID: 3001, PaymentID: 18001},
 				{CustomerID: 2, FolioID: 1002, BillID: 4001, JournalID: 3001, PaymentID: 18002},
+			},
+			StatementFolioParentUpdateProbeSlots: []seed.StatementFolioParentUpdateProbeSlot{
+				{CustomerID: 1, FolioID: 1001, StatementID: 23001},
+				{CustomerID: 2, FolioID: 1002, StatementID: 23002},
 			},
 		},
 	}

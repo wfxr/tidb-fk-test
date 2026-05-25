@@ -128,10 +128,6 @@ func NewPMFKBackfill() Scenario {
 					args:  []any{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)},
 				},
 				{
-					query: "UPDATE folio SET last_statement_id = ? WHERE id = ?",
-					args:  []any{slot.StatementID, slot.FolioID},
-				},
-				{
 					query: "UPDATE withdrawal SET statement_id = ? WHERE id = ?",
 					args:  []any{slot.StatementID, slot.WithdrawalID},
 				},
@@ -269,5 +265,6 @@ func missingPropertyMeSeedPlan(plan seed.PropertyMeSeedPlan) bool {
 		len(plan.FKBackfillSlots) == 0 &&
 		len(plan.PaymentMixedReferenceSlots) == 0 &&
 		len(plan.CascadePathSlots) == 0 &&
-		len(plan.PaymentBillUpdateProbeSlots) == 0
+		len(plan.PaymentBillUpdateProbeSlots) == 0 &&
+		len(plan.StatementFolioParentUpdateProbeSlots) == 0
 }

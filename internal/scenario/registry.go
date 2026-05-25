@@ -7,7 +7,7 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
 )
 
-const paymentBillUpdateProbeExpectedError = "upgrading a shared lock to an exclusive lock is not supported"
+const sharedLockUpgradeExpectedError = "upgrading a shared lock to an exclusive lock is not supported"
 
 type Registry struct {
 	items map[string]Scenario
@@ -24,6 +24,7 @@ func NewRegistry() *Registry {
 	r.add(NewGenericDeleteParentCascade())
 	r.add(NewGenericConcurrentHotParentInsert())
 	r.add(NewPaymentBillUpdateProbe())
+	r.add(NewStatementFolioParentUpdateProbe())
 	r.add(NewPMJournalPostingBill())
 	r.add(NewPMFolioBalanceUpdate())
 	r.add(NewPMFKBackfill())

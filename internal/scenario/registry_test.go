@@ -57,6 +57,19 @@ func TestRegistryContainsFailureProbe(t *testing.T) {
 	if meta.ExpectedErrorMatch == "" {
 		t.Fatal("ExpectedErrorMatch should not be empty")
 	}
+
+	s, ok = reg.Get("statement_folio_parent_update_probe")
+	if !ok {
+		t.Fatalf("statement_folio_parent_update_probe not registered")
+	}
+
+	meta = s.Meta()
+	if meta.Group != FailureProbeGroup {
+		t.Fatalf("Group = %q, want %q", meta.Group, FailureProbeGroup)
+	}
+	if meta.ExpectedErrorMatch == "" {
+		t.Fatal("ExpectedErrorMatch should not be empty")
+	}
 }
 
 func TestRegistryRegistersPlannedScenarios(t *testing.T) {
@@ -71,6 +84,7 @@ func TestRegistryRegistersPlannedScenarios(t *testing.T) {
 		"generic_delete_parent_cascade":              GenericGroup,
 		"generic_concurrent_hot_parent_insert":       GenericGroup,
 		"payment_bill_update_probe":                  FailureProbeGroup,
+		"statement_folio_parent_update_probe":        FailureProbeGroup,
 		"pm_journal_posting_bill":                    PropertyMeGroup,
 		"pm_folio_balance_update":                    PropertyMeGroup,
 		"pm_fk_backfill":                             PropertyMeGroup,
@@ -153,6 +167,42 @@ func TestRegistryFailureProbeUsesRealImplementation(t *testing.T) {
 		{slot.PaymentID},
 		{slot.PaymentID, slot.BillID, slot.JournalID, "pending", int64(450)},
 		{int64(450), slot.BillID},
+	}
+	if got := argsFromCalls(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+		t.Fatalf("args = %v, want %v", got, wantArgs)
+	}
+}
+
+func TestRegistryStatementFolioParentUpdateProbeUsesRealImplementation(t *testing.T) {
+	reg := NewRegistry()
+
+	s, ok := reg.Get("statement_folio_parent_update_probe")
+	if !ok {
+		t.Fatal("statement_folio_parent_update_probe not registered")
+	}
+
+	sess := &recordingTxSession{}
+	seedState := testPropertyMeSeedState()
+	slot := seedState.PropertyMe.StatementFolioParentUpdateProbeSlots[0]
+
+	err := s.Run(context.Background(), sess, seedState)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantQueries := []string{
+		"DELETE FROM statement WHERE id = ?",
+		"INSERT INTO statement (id, customer_id, folio_id, status, balance_cents) VALUES (?, ?, ?, ?, ?)",
+		"UPDATE folio SET last_statement_id = ? WHERE id = ?",
+	}
+	if got := queriesFromCalls(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+		t.Fatalf("queries = %v, want %v", got, wantQueries)
+	}
+
+	wantArgs := [][]any{
+		{slot.StatementID},
+		{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)},
+		{slot.StatementID, slot.FolioID},
 	}
 	if got := argsFromCalls(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)

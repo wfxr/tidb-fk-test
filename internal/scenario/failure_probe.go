@@ -12,8 +12,16 @@ type paymentBillUpdateProbe struct {
 	runCounter atomic.Uint64
 }
 
+type statementFolioParentUpdateProbe struct {
+	runCounter atomic.Uint64
+}
+
 func NewPaymentBillUpdateProbe() Scenario {
 	return &paymentBillUpdateProbe{}
+}
+
+func NewStatementFolioParentUpdateProbe() Scenario {
+	return &statementFolioParentUpdateProbe{}
 }
 
 func (s *paymentBillUpdateProbe) Meta() Metadata {
@@ -22,7 +30,7 @@ func (s *paymentBillUpdateProbe) Meta() Metadata {
 		Group:              FailureProbeGroup,
 		Weight:             1,
 		ConcurrencyHint:    1,
-		ExpectedErrorMatch: paymentBillUpdateProbeExpectedError,
+		ExpectedErrorMatch: sharedLockUpgradeExpectedError,
 	}
 }
 
@@ -51,6 +59,52 @@ func (s *paymentBillUpdateProbe) Run(ctx context.Context, sess db.TxSession, see
 		{
 			query: "UPDATE bill SET paid_cents = paid_cents + ?, version = version + 1 WHERE id = ?",
 			args:  []any{int64(450), slot.BillID},
+		},
+	}
+
+	for _, step := range cloneExecSteps(steps) {
+		if _, err := sess.ExecContext(ctx, step.query, step.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *statementFolioParentUpdateProbe) Meta() Metadata {
+	return Metadata{
+		Name:               "statement_folio_parent_update_probe",
+		Group:              FailureProbeGroup,
+		Weight:             1,
+		ConcurrencyHint:    1,
+		ExpectedErrorMatch: sharedLockUpgradeExpectedError,
+	}
+}
+
+func (s *statementFolioParentUpdateProbe) Run(ctx context.Context, sess db.TxSession, seedState SeedState) error {
+	if missingPropertyMeSeedPlan(seedState.PropertyMe) {
+		return fmt.Errorf("statement_folio_parent_update_probe: propertyme seed plan required")
+	}
+
+	run := s.runCounter.Add(1) - 1
+	slot, err := selectPoolSlot(
+		"statement_folio_parent_update_probe",
+		seedState.PropertyMe.StatementFolioParentUpdateProbeSlots,
+		run,
+		"statement/folio parent-update probe fixture slots",
+	)
+	if err != nil {
+		return err
+	}
+
+	steps := []execStep{
+		{query: "DELETE FROM statement WHERE id = ?", args: []any{slot.StatementID}},
+		{
+			query: "INSERT INTO statement (id, customer_id, folio_id, status, balance_cents) VALUES (?, ?, ?, ?, ?)",
+			args:  []any{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)},
+		},
+		{
+			query: "UPDATE folio SET last_statement_id = ? WHERE id = ?",
+			args:  []any{slot.StatementID, slot.FolioID},
 		},
 	}
 

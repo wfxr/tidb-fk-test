@@ -139,6 +139,12 @@ func TestRunBuildsSummaryOrientedOutcomes(t *testing.T) {
 			Success:         0,
 			ExpectedFailure: 0,
 		},
+		{
+			Name:            "statement_folio_parent_update_probe",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
 	}
 	if !reflect.DeepEqual(results.Runtime.Scenarios, wantRuntimeScenarios) {
 		t.Fatalf("Runtime.Scenarios = %#v, want %#v", results.Runtime.Scenarios, wantRuntimeScenarios)
