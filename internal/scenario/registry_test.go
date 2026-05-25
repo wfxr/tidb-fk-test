@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
@@ -58,7 +59,7 @@ func TestRegistryContainsFailureProbe(t *testing.T) {
 	}
 }
 
-func TestRegistryRegistersPlannedPlaceholderScenarios(t *testing.T) {
+func TestRegistryRegistersPlannedScenarios(t *testing.T) {
 	reg := NewRegistry()
 
 	want := map[string]Group{
@@ -94,6 +95,31 @@ func TestRegistryRegistersPlannedPlaceholderScenarios(t *testing.T) {
 		if meta.Group != group {
 			t.Fatalf("%s Group = %q, want %q", name, meta.Group, group)
 		}
+	}
+}
+
+func TestRegistryGenericScenarioUsesRealImplementation(t *testing.T) {
+	reg := NewRegistry()
+
+	s, ok := reg.Get("generic_insert_parent_then_child")
+	if !ok {
+		t.Fatal("generic_insert_parent_then_child not registered")
+	}
+
+	sess := &recordingTxSession{}
+	err := s.Run(context.Background(), sess, testGenericSeedState())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantQueries := []string{
+		"DELETE FROM child_basic WHERE id = ?",
+		"DELETE FROM parent_basic WHERE id = ?",
+		"INSERT INTO parent_basic (id, note) VALUES (?, ?)",
+		"INSERT INTO child_basic (id, parent_id, payload) VALUES (?, ?, ?)",
+	}
+	if got := queriesFromCalls(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 }
 

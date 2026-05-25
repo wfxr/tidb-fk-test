@@ -16,13 +16,13 @@ type Registry struct {
 func NewRegistry() *Registry {
 	r := &Registry{items: make(map[string]Scenario)}
 
-	r.add(genericPlaceholder("generic_insert_existing_parent"))
-	r.add(genericPlaceholder("generic_insert_parent_then_child"))
-	r.add(genericPlaceholder("generic_update_child_no_fk_change"))
-	r.add(genericPlaceholder("generic_rebind_child_fk"))
-	r.add(genericPlaceholder("generic_insert_parent_then_update_child_fk"))
-	r.add(genericPlaceholder("generic_delete_parent_cascade"))
-	r.add(genericPlaceholder("generic_concurrent_hot_parent_insert"))
+	r.add(NewGenericInsertExistingParent())
+	r.add(NewGenericInsertParentThenChild())
+	r.add(NewGenericUpdateChildNoFKChange())
+	r.add(NewGenericRebindChildFK())
+	r.add(NewGenericInsertParentThenUpdateChildFK())
+	r.add(NewGenericDeleteParentCascade())
+	r.add(NewGenericConcurrentHotParentInsert())
 	r.add(failureProbePlaceholder("payment_bill_update_probe", paymentBillUpdateProbeExpectedError))
 	r.add(propertyMePlaceholder("pm_journal_posting_bill"))
 	r.add(propertyMePlaceholder("pm_folio_balance_update"))

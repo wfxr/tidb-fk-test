@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
 
 type Group string
@@ -37,7 +38,9 @@ func (m Metadata) MatchesExpectedError(err error) bool {
 	)
 }
 
-type SeedState struct{}
+type SeedState struct {
+	Generic seed.GenericSeedPlan
+}
 
 type Scenario interface {
 	Meta() Metadata
