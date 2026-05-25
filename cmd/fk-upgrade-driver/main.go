@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -100,16 +102,7 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 	}
 
 	warmupSummary := progressReporter.BuildSnapshot(runner.WarmupPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
-	slog.Info(
-		"bounded warmup completed",
-		"phase", warmupSummary.Phase,
-		"total_workers", warmupSummary.ActiveWorkers,
-		"executed", warmupSummary.TotalExecuted,
-		"success", warmupSummary.Success,
-		"expected_failure", warmupSummary.ExpectedFailure,
-		"unexpected_failure", warmupSummary.UnexpectedFailure,
-		"runtime_scenarios", runtimeSummary.Scenarios(),
-	)
+	printWarmupSummary(os.Stdout, warmupSummary, runtimeSummary.Scenarios())
 
 	if !cfg.CheckerEnabled {
 		return nil
@@ -124,14 +117,71 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		return err
 	}
 
-	slog.Info(
-		"checker summary",
-		"runtime_totals", checkSummary.Runtime.Totals,
-		"runtime_scenarios", checkSummary.Runtime.Scenarios,
-		"checks", checkSummary.Outcomes,
-	)
+	printCheckerSummary(os.Stdout, checkSummary)
 
 	return nil
+}
+
+func printWarmupSummary(out *os.File, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Warmup Summary")
+	fmt.Fprintln(out, "==============")
+	fmt.Fprintf(out, "Phase: %s\n", snapshot.Phase)
+	fmt.Fprintf(out, "Workers: %d\n", snapshot.ActiveWorkers)
+	fmt.Fprintf(out, "Executed: %d\n", snapshot.TotalExecuted)
+	fmt.Fprintf(out, "Success: %d\n", snapshot.Success)
+	fmt.Fprintf(out, "Expected failures: %d\n", snapshot.ExpectedFailure)
+	fmt.Fprintf(out, "Unexpected failures: %d\n", snapshot.UnexpectedFailure)
+
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Scenario\tExecuted\tSuccess\tExpected\tUnexpected\tLast Error")
+	for _, item := range scenarios {
+		if item.Executed == 0 && item.ExpectedFailure == 0 && item.UnexpectedFailure == 0 {
+			continue
+		}
+		lastError := item.LastErrorText
+		if lastError == "" {
+			lastError = "-"
+		}
+		fmt.Fprintf(
+			w,
+			"%s\t%d\t%d\t%d\t%d\t%s\n",
+			item.Name,
+			item.Executed,
+			item.Success,
+			item.ExpectedFailure,
+			item.UnexpectedFailure,
+			lastError,
+		)
+	}
+	_ = w.Flush()
+}
+
+func printCheckerSummary(out *os.File, summary checker.Summary) {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Checker Summary")
+	fmt.Fprintln(out, "===============")
+	fmt.Fprintf(out, "Runtime executed: %d\n", summary.Runtime.Totals.Executed)
+	fmt.Fprintf(out, "Runtime success: %d\n", summary.Runtime.Totals.Success)
+	fmt.Fprintf(out, "Runtime expected failures: %d\n", summary.Runtime.Totals.ExpectedFailure)
+	fmt.Fprintf(out, "Runtime unexpected failures: %d\n", summary.Runtime.Totals.UnexpectedFailure)
+
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Check\tPassed\tCount\tExpected\tUnexpected")
+	for _, item := range summary.Outcomes {
+		fmt.Fprintf(
+			w,
+			"%s\t%t\t%d\t%d\t%d\n",
+			item.Name,
+			item.Passed,
+			item.Count,
+			item.ExpectedFKFailure,
+			item.UnexpectedFailure,
+		)
+	}
+	_ = w.Flush()
 }
 
 func syncProbeSummary(ctx context.Context, db *sql.DB, runtime *report.Summary) error {
