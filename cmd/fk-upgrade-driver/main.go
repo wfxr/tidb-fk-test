@@ -13,6 +13,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/runner"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
@@ -47,7 +48,8 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 	}
 
 	registry := scenario.NewRegistry()
-	runtimeSummary := report.NewSummary(registry.All())
+	scenarios := registry.All()
+	runtimeSummary := report.NewSummary(scenarios)
 	scheduler := runner.NewScheduler(cfg)
 	progressReporter := report.NewProgressReporter(cfg.ProgressReportInterval)
 	initialSnapshot := progressReporter.BuildSnapshot("warmup", scheduler.TotalWorkers(), runtimeSummary, now)
@@ -62,6 +64,49 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 		"post_upgrade_duration", cfg.PostUpgradeDuration,
 		"initial_phase", initialSnapshot.Phase,
 		"initial_executed", initialSnapshot.TotalExecuted,
+		"scenario_count", len(scenarios),
+		"checker_enabled", cfg.CheckerEnabled,
+	)
+
+	engine := runner.NewEngine(runner.EngineConfig{
+		Session:   sqlSession{DB: db},
+		Registry:  registry,
+		Scheduler: scheduler,
+		SeedState: scenario.SeedState{
+			Generic:    applied.Generic,
+			PropertyMe: applied.PropertyMe,
+		},
+		Summary:        runtimeSummary,
+		Progress:       progressReporter,
+		WarmupDuration: cfg.WarmupDuration,
+		Now:            time.Now,
+		OnProgress: func(snapshot report.Snapshot) {
+			slog.Info(
+				"warmup progress snapshot",
+				"phase", snapshot.Phase,
+				"active_workers", snapshot.ActiveWorkers,
+				"total_executed", snapshot.TotalExecuted,
+				"success", snapshot.Success,
+				"expected_failure", snapshot.ExpectedFailure,
+				"unexpected_failure", snapshot.UnexpectedFailure,
+				"timestamp", snapshot.Timestamp,
+			)
+		},
+	})
+	if err := engine.Run(ctx); err != nil {
+		return err
+	}
+
+	warmupSummary := progressReporter.BuildSnapshot(runner.WarmupPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
+	slog.Info(
+		"bounded warmup completed",
+		"phase", warmupSummary.Phase,
+		"total_workers", warmupSummary.ActiveWorkers,
+		"executed", warmupSummary.TotalExecuted,
+		"success", warmupSummary.Success,
+		"expected_failure", warmupSummary.ExpectedFailure,
+		"unexpected_failure", warmupSummary.UnexpectedFailure,
+		"runtime_scenarios", runtimeSummary.Scenarios(),
 	)
 
 	if !cfg.CheckerEnabled {
@@ -75,7 +120,8 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 
 	slog.Info(
 		"checker summary",
-		"runtime_executed", checkSummary.Runtime.Executed,
+		"runtime_totals", checkSummary.Runtime.Totals,
+		"runtime_scenarios", checkSummary.Runtime.Scenarios,
 		"checks", checkSummary.Outcomes,
 	)
 
@@ -116,4 +162,36 @@ type checkerDB struct {
 
 func (db checkerDB) QueryRowContext(ctx context.Context, query string, args ...any) checker.RowScanner {
 	return db.DB.QueryRowContext(ctx, query, args...)
+}
+
+type sqlSession struct {
+	DB *sql.DB
+}
+
+func (db sqlSession) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbpkg.Tx, error) {
+	tx, err := db.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return sqlTx{Tx: tx}, nil
+}
+
+type sqlTx struct {
+	Tx *sql.Tx
+}
+
+func (tx sqlTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return tx.Tx.ExecContext(ctx, query, args...)
+}
+
+func (tx sqlTx) QueryRowContext(ctx context.Context, query string, args ...any) dbpkg.RowScanner {
+	return tx.Tx.QueryRowContext(ctx, query, args...)
+}
+
+func (tx sqlTx) Commit() error {
+	return tx.Tx.Commit()
+}
+
+func (tx sqlTx) Rollback() error {
+	return tx.Tx.Rollback()
 }

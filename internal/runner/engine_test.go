@@ -289,6 +289,87 @@ func TestEngineRunIgnoresCanceledInFlightScenarioAfterStop(t *testing.T) {
 	}
 }
 
+func TestEngineRunRotatesWorkerAcrossGroupScenarios(t *testing.T) {
+	startedCh := make(chan string, 3)
+	var startedCount int
+	var cancel context.CancelFunc
+	registry := newStubRegistry(
+		newStubScenario("generic_gamma", scenario.GenericGroup, nil, func() {
+			startedCh <- "generic_gamma"
+			startedCount++
+			if startedCount == 3 {
+				cancel()
+			}
+		}),
+		newStubScenario("generic_alpha", scenario.GenericGroup, nil, func() {
+			startedCh <- "generic_alpha"
+			startedCount++
+			if startedCount == 3 {
+				cancel()
+			}
+		}),
+		newStubScenario("generic_beta", scenario.GenericGroup, nil, func() {
+			startedCh <- "generic_beta"
+			startedCount++
+			if startedCount == 3 {
+				cancel()
+			}
+		}),
+	)
+	summary := report.NewSummary(registry.All())
+	session := &stubSession{}
+	engine := NewEngine(EngineConfig{
+		Session:        session,
+		Registry:       registry,
+		Scheduler:      Scheduler{GenericWorkers: 1},
+		SeedState:      scenario.SeedState{},
+		Summary:        summary,
+		Progress:       report.NewProgressReporter(time.Second),
+		WarmupDuration: time.Minute,
+		After: func(time.Duration) <-chan time.Time {
+			return make(chan time.Time)
+		},
+		NewTicker: func(time.Duration) ticker {
+			return &stubTicker{ch: make(chan time.Time)}
+		},
+		Now: func() time.Time {
+			return time.Date(2026, time.May, 25, 13, 0, 0, 0, time.UTC)
+		},
+	})
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	cancel = ctxCancel
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- engine.Run(ctx)
+	}()
+
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want context canceled", err)
+	}
+
+	gotStarts := []string{<-startedCh, <-startedCh, <-startedCh}
+	wantStarts := []string{"generic_alpha", "generic_beta", "generic_gamma"}
+	if !reflect.DeepEqual(gotStarts, wantStarts) {
+		t.Fatalf("worker starts = %v, want %v", gotStarts, wantStarts)
+	}
+
+	if totals := summary.Totals(); totals.Executed != 3 {
+		t.Fatalf("Totals().Executed = %d, want 3", totals.Executed)
+	}
+	for _, name := range wantStarts {
+		stats, ok := summary.Scenario(name)
+		if !ok {
+			t.Fatalf("Scenario(%s) not found", name)
+		}
+		if stats.Executed != 1 {
+			t.Fatalf("Scenario(%s).Executed = %d, want 1", name, stats.Executed)
+		}
+	}
+}
+
 func TestEngineRunWorkerStepSkipsBeginTxAfterCancellation(t *testing.T) {
 	registry := newStubRegistry(
 		newStubScenario("generic_success", scenario.GenericGroup, nil, nil),
@@ -311,10 +392,7 @@ func TestEngineRunWorkerStepSkipsBeginTxAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	engine.runWorkerStep(ctx, workerPlan{
-		worker:   Worker{Group: scenario.GenericGroup},
-		scenario: registry.all[0],
-	})
+	engine.runWorkerStep(ctx, registry.all[0])
 
 	if session.beginCalls != 0 {
 		t.Fatalf("BeginTx calls = %d, want 0", session.beginCalls)

@@ -65,9 +65,14 @@ type Outcome struct {
 	UnexpectedFailure int64     `json:"unexpected_failure,omitempty"`
 }
 
+type RuntimeSummary struct {
+	Totals    report.Totals            `json:"totals"`
+	Scenarios []report.ScenarioSummary `json:"scenarios,omitempty"`
+}
+
 type Summary struct {
-	Runtime  report.Totals `json:"runtime"`
-	Outcomes []Outcome     `json:"outcomes"`
+	Runtime  RuntimeSummary `json:"runtime"`
+	Outcomes []Outcome      `json:"outcomes"`
 }
 
 func DefaultChecks() map[string]Definition {
@@ -83,7 +88,10 @@ func Run(ctx context.Context, db Queryer, applied seed.AppliedState, runtime *re
 		Outcomes: make([]Outcome, 0, len(defaultCheckOrder)),
 	}
 	if runtime != nil {
-		results.Runtime = runtime.Totals()
+		results.Runtime = RuntimeSummary{
+			Totals:    runtime.Totals(),
+			Scenarios: runtime.Scenarios(),
+		}
 	}
 
 	for _, name := range defaultCheckOrder {

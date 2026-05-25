@@ -68,8 +68,9 @@ type Engine struct {
 }
 
 type workerPlan struct {
-	worker   Worker
-	scenario scenario.Scenario
+	worker    Worker
+	scenarios []scenario.Scenario
+	next      int
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
@@ -182,16 +183,22 @@ func (e *Engine) workerLoop(ctx context.Context, plan workerPlan) {
 			return
 		}
 
-		e.runWorkerStep(ctx, plan)
+		e.runWorkerStep(ctx, plan.nextScenario())
 	}
 }
 
-func (e *Engine) runWorkerStep(ctx context.Context, plan workerPlan) {
+func (p *workerPlan) nextScenario() scenario.Scenario {
+	item := p.scenarios[p.next]
+	p.next = (p.next + 1) % len(p.scenarios)
+	return item
+}
+
+func (e *Engine) runWorkerStep(ctx context.Context, item scenario.Scenario) {
 	if e.shouldStop(ctx) {
 		return
 	}
 
-	meta := plan.scenario.Meta()
+	meta := item.Meta()
 	tx, err := e.session.BeginTx(ctx, nil)
 	if err != nil {
 		if e.shouldIgnoreStopArtifact(ctx, err) {
@@ -201,7 +208,7 @@ func (e *Engine) runWorkerStep(ctx context.Context, plan workerPlan) {
 		return
 	}
 
-	if err := plan.scenario.Run(ctx, tx, e.seedState); err != nil {
+	if err := item.Run(ctx, tx, e.seedState); err != nil {
 		_ = tx.Rollback()
 		if e.shouldIgnoreStopArtifact(ctx, err) {
 			return
@@ -244,8 +251,9 @@ func (e *Engine) buildWorkerPlans() ([]workerPlan, error) {
 		}
 		offset := groupOffsets[worker.Group]
 		plans = append(plans, workerPlan{
-			worker:   worker,
-			scenario: items[offset%len(items)],
+			worker:    worker,
+			scenarios: items,
+			next:      offset % len(items),
 		})
 		groupOffsets[worker.Group] = offset + 1
 	}

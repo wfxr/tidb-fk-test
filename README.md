@@ -1,12 +1,12 @@
 # FK Upgrade Workload Driver
 
-This repo contains the early Go skeleton for the foreign-key upgrade workload
+This repo contains the Go implementation of the foreign-key upgrade workload
 driver described in
 `docs/plans/2026-05-25-fk-upgrade-workload-driver.md`.
 
-The current implementation is useful for config loading, seed-plan shaping, the
-scenario registry, startup logging, and checker orchestration. It is not yet a
-full long-running workload generator.
+The current implementation can run a real bounded warmup workload against a
+TiDB/MySQL-compatible endpoint. It is still a smoke-path driver, not a full
+rolling-upgrade controller.
 
 ## Current State
 
@@ -15,16 +15,20 @@ full long-running workload generator.
 - The default worker layout is 8 total workers split into 4 generic, 3
   PropertyMe, and 1 failure-probe worker.
 - The default `progress_report_interval` is `10s`.
-- Startup builds an initial warmup snapshot and logs the configured
-  `progress_report_interval`, but the skeleton does not yet emit recurring
-  10-second progress snapshots.
-- Seed application currently runs placeholder seed phases so the command can
-  exercise orchestration flow without a full schema implementation.
-- The checker hook is wired and enabled by default, but it expects real tables
-  such as `child_basic`, `child_cascade`, and `probe_summary` that the current
-  placeholder seeding does not create.
-- Scenario execution loops, runtime event logging, `-dry-run`, and phase control
-  flags are not implemented yet.
+- Startup still logs the initial warmup snapshot metadata before the workload
+  starts.
+- Seed application creates the generic, PropertyMe, and `probe_summary` tables
+  used by scenarios and checker, then inserts bounded fixture rows.
+- The CLI runs the real bounded warmup engine for `warmup_duration`, using the
+  registered scenarios plus the seeded fixture plans.
+- Recurring `warmup progress snapshot` logs are emitted every
+  `progress_report_interval` while the warmup is still running.
+- After warmup, the CLI logs a final bounded warmup summary. If
+  `checker_enabled: true`, it then runs the checker against the seeded tables
+  and the runtime report summary.
+- This is still not a full rolling-upgrade controller: there is no
+  post-upgrade execution phase, no upgrade orchestration, and no `-dry-run` or
+  phase control flags yet.
 
 ## Operator Quick Start
 
@@ -34,32 +38,42 @@ Run the repo checks from the repo root:
 go test ./...
 ```
 
-For a smoke startup against a reachable TiDB/MySQL endpoint, use a tiny override
-file so you do not need to edit the checked-in defaults. Partial override files
-work because the binary starts from compiled defaults that match
+For a bounded local smoke run against a reachable TiDB/MySQL endpoint, use a
+tiny override file so you do not need to edit the checked-in defaults. Partial
+override files work because the binary starts from compiled defaults that match
 `configs/default.yaml`:
 
 ```bash
 cat >/tmp/fk-driver-smoke.yaml <<'EOF'
 dsn: "root@tcp(127.0.0.1:4000)/test"
+warmup_duration: 3s
+progress_report_interval: 1s
 checker_enabled: false
 EOF
 
 go run ./cmd/fk-upgrade-driver -config /tmp/fk-driver-smoke.yaml
 ```
 
-Expected smoke behavior today:
+Expected smoke behavior on a reachable local playground:
 
 - the command logs `starting fk upgrade driver skeleton`
 - the log includes `total_workers=8`
-- the log includes `progress_report_interval=10s`
+- the log includes the configured `progress_report_interval`
 - the log includes the four seed phase names and `initial_phase=warmup`
-- the command exits after the startup log because there is no recurring worker
-  loop yet
+- the command emits recurring `warmup progress snapshot` lines while warmup is
+  still active
+- the command logs `bounded warmup completed` before exiting
 
-If you leave `checker_enabled: true`, the command is expected to proceed into
-checker queries. On a plain test database without the checker tables, that will
-fail after startup.
+Notes:
+
+- If `warmup_duration` is shorter than or equal to
+  `progress_report_interval`, you may only see the startup log and the final
+  warmup summary because no ticker fire fits inside the warmup window.
+- Exact execution counts depend on the target database and host speed, but a
+  healthy local playground should usually show non-zero executed work over a
+  3-second warmup.
+- If you leave `checker_enabled: true`, the command runs the checker after the
+  bounded warmup completes. For a minimal smoke path, keep it `false`.
 
 ## Key Files
 

@@ -1,7 +1,6 @@
 # FK Upgrade Workload Driver Runbook
 
-This runbook is for the current repo state, not the target end state from the
-plan. Follow it from the repo root.
+This runbook is for the current repo state. Follow it from the repo root.
 
 ## What Exists Today
 
@@ -9,16 +8,19 @@ The current `cmd/fk-upgrade-driver` binary does these things:
 
 - loads defaults plus YAML overrides from `-config`
 - requires a non-empty MySQL-compatible DSN
-- runs placeholder seed phases in a fixed order
-- builds an initial warmup progress snapshot
-- logs the configured `progress_report_interval`
-- optionally runs checker queries when `checker_enabled: true`
+- applies real generic, PropertyMe, and `probe_summary` schema/fixture seed
+  phases in a fixed order
+- builds and logs an initial warmup progress snapshot
+- runs the bounded warmup engine for `warmup_duration`
+- emits recurring `warmup progress snapshot` logs on
+  `progress_report_interval` while warmup is still active
+- logs a final bounded warmup summary
+- optionally runs checker queries after warmup when `checker_enabled: true`
 
 The current binary does not yet do these things:
 
-- run a long-lived workload loop
-- execute registered scenarios against worker sessions
-- emit recurring 10-second progress snapshots on a ticker
+- control an actual rolling upgrade
+- run the planned post-upgrade execution window
 - expose `-dry-run` or per-phase CLI flags
 
 Keep that boundary in mind when operating it.
@@ -28,24 +30,23 @@ Keep that boundary in mind when operating it.
 The checked-in defaults live in `configs/default.yaml`.
 
 - `progress_report_interval: 10s`
-  This is the configured cadence for progress reporting. In the current
-  skeleton, it appears in the startup log and is used to build the initial
-  snapshot metadata. There is not yet a recurring ticker loop.
+  This is the configured cadence for recurring warmup progress snapshots.
+  Ticker-driven progress logs are only emitted while warmup is still running, so
+  very short smoke durations may finish before the first tick.
 - `failure_probe_interval: 10s`
-  This default exists in config, but there is not yet a live probe scheduler in
-  `main`.
+  The failure-probe scenario is part of the warmup registry. There is still no
+  separate out-of-band probe loop in `main`.
 - `generic_workers: 4`, `propertyme_workers: 3`, `failure_probe_workers: 1`
-  These are the worker-group counts that currently drive the reported worker
-  total.
+  These worker-group counts drive the bounded warmup run.
 - `total_workers: 8`
   This matches the current group-count sum. Keep them in sync when overriding
   the group counts.
 - `warmup_duration: 15m` and `post_upgrade_duration: 20m`
-  These are logged today as intended future phase durations.
+  Only `warmup_duration` is exercised today. `post_upgrade_duration` is still
+  logged as future intent.
 - `checker_enabled: true`
-  This is the default for the intended full workflow, but it is too aggressive
-  for a plain smoke run because the placeholder seed path does not create the
-  checker tables.
+  This is the default for the intended fuller workflow. For a minimal local
+  smoke path, set it to `false` so the command exits after bounded warmup.
 
 ## Smoke Verification
 
@@ -57,15 +58,19 @@ go test ./...
 
 This should pass before you try the CLI.
 
-### 2. Run a startup-only smoke check
+### 2. Run a bounded smoke check
 
 Create a small override file that points to a reachable TiDB/MySQL endpoint and
-disables the checker. Partial override files work because the binary starts
-from compiled defaults and only applies the keys present in the override file:
+disables the checker. Keep the warmup window and progress interval short so the
+smoke path finishes quickly. Partial override files work because the binary
+starts from compiled defaults and only applies the keys present in the override
+file:
 
 ```bash
 cat >/tmp/fk-driver-smoke.yaml <<'EOF'
 dsn: "root@tcp(127.0.0.1:4000)/test"
+warmup_duration: 3s
+progress_report_interval: 1s
 checker_enabled: false
 EOF
 ```
@@ -76,7 +81,7 @@ Then start the driver from the repo root:
 go run ./cmd/fk-upgrade-driver -config /tmp/fk-driver-smoke.yaml
 ```
 
-Expected result with the current skeleton:
+Expected result with the current bounded smoke path:
 
 - exit code `0`
 - one startup log line with message `starting fk upgrade driver skeleton`
@@ -84,27 +89,33 @@ Expected result with the current skeleton:
   `apply_generic_schema`, `apply_propertyme_schema`,
   `seed_generic_fixtures`, `seed_propertyme_fixtures`
 - `total_workers=8`
-- `progress_report_interval=10s`
+- `progress_report_interval=1s`
 - `initial_phase=warmup`
 - `initial_executed=0`
+- recurring `warmup progress snapshot` logs while the 3-second warmup is still
+  active
+- one `bounded warmup completed` log line before exit
 
 What you should not expect yet:
 
-- recurring progress logs every 10 seconds
-- non-zero success counters
-- scenario execution or classified runtime failure summaries
+- an upgrade controller or a post-upgrade phase
+- exact deterministic execution counts across machines
+- extra CLI controls such as `-dry-run`
 
-Those behaviors belong to the next implementation steps, not the current
-binary.
+Scenario execution is live now, so a healthy local playground should usually
+produce non-zero runtime counters over a 3-second warmup. If the warmup window
+is shorter than the progress interval, the command may legitimately skip
+recurring snapshot logs and only emit startup plus final summary lines.
 
 ### 3. Optional checker smoke
 
-Only run this if your target database already contains the checker tables and
-expected fixture data:
+Only run this if you want the post-warmup checker as part of the smoke path:
 
 ```bash
 cat >/tmp/fk-driver-checker.yaml <<'EOF'
 dsn: "root@tcp(127.0.0.1:4000)/test"
+warmup_duration: 3s
+progress_report_interval: 1s
 checker_enabled: true
 EOF
 
@@ -114,15 +125,12 @@ go run ./cmd/fk-upgrade-driver -config /tmp/fk-driver-checker.yaml
 Expected result on a correctly prepared database:
 
 - the same startup log as above
+- bounded warmup progress and completion logs
 - a `checker summary` log line
 
-Expected result on an unprepared database:
-
-- startup succeeds
-- checker phase fails on missing tables such as `child_basic`,
-  `child_cascade`, or `probe_summary`
-
-That failure is consistent with the current placeholder seeding behavior.
+Because the current seed path creates the checker tables itself, missing-table
+checker failures now indicate an unexpected environment or schema drift rather
+than a known placeholder limitation.
 
 ## Operator Notes
 
