@@ -21,4 +21,5 @@ checker_enabled: $checker_enabled
 EOF
 
 echo "Running bounded FK smoke with config: $tmp_config"
+echo
 go run ./cmd/fk-upgrade-driver -config "$tmp_config"

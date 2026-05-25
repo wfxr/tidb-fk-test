@@ -123,19 +123,22 @@ func run(ctx context.Context, configPath string, now time.Time) error {
 }
 
 func printWarmupSummary(out *os.File, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
+	expectedOutcomes := snapshot.Success + snapshot.ExpectedFailure
+
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Warmup Summary")
 	fmt.Fprintln(out, "==============")
 	fmt.Fprintf(out, "Phase: %s\n", snapshot.Phase)
 	fmt.Fprintf(out, "Workers: %d\n", snapshot.ActiveWorkers)
 	fmt.Fprintf(out, "Executed: %d\n", snapshot.TotalExecuted)
+	fmt.Fprintf(out, "Expected outcomes: %d\n", expectedOutcomes)
 	fmt.Fprintf(out, "Success: %d\n", snapshot.Success)
 	fmt.Fprintf(out, "Expected failures: %d\n", snapshot.ExpectedFailure)
 	fmt.Fprintf(out, "Unexpected failures: %d\n", snapshot.UnexpectedFailure)
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Scenario\tExecuted\tSuccess\tExpected\tUnexpected\tLast Error")
+	fmt.Fprintln(w, "Scenario\tExecuted\tSuccess\tFail\tUnexpected\tLast Error")
 	for _, item := range scenarios {
 		if item.Executed == 0 && item.ExpectedFailure == 0 && item.UnexpectedFailure == 0 {
 			continue
@@ -144,13 +147,14 @@ func printWarmupSummary(out *os.File, snapshot report.Snapshot, scenarios []repo
 		if lastError == "" {
 			lastError = "-"
 		}
+		failures := item.ExpectedFailure + item.UnexpectedFailure
 		fmt.Fprintf(
 			w,
 			"%s\t%d\t%d\t%d\t%d\t%s\n",
 			item.Name,
 			item.Executed,
 			item.Success,
-			item.ExpectedFailure,
+			failures,
 			item.UnexpectedFailure,
 			lastError,
 		)
@@ -159,10 +163,13 @@ func printWarmupSummary(out *os.File, snapshot report.Snapshot, scenarios []repo
 }
 
 func printCheckerSummary(out *os.File, summary checker.Summary) {
+	expectedOutcomes := summary.Runtime.Totals.Success + summary.Runtime.Totals.ExpectedFailure
+
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Checker Summary")
 	fmt.Fprintln(out, "===============")
 	fmt.Fprintf(out, "Runtime executed: %d\n", summary.Runtime.Totals.Executed)
+	fmt.Fprintf(out, "Runtime expected outcomes: %d\n", expectedOutcomes)
 	fmt.Fprintf(out, "Runtime success: %d\n", summary.Runtime.Totals.Success)
 	fmt.Fprintf(out, "Runtime expected failures: %d\n", summary.Runtime.Totals.ExpectedFailure)
 	fmt.Fprintf(out, "Runtime unexpected failures: %d\n", summary.Runtime.Totals.UnexpectedFailure)
