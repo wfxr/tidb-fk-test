@@ -26,7 +26,7 @@ func (fakeTxSession) ExecContext(context.Context, string, ...any) (sql.Result, e
 	return nil, nil
 }
 
-func (fakeTxSession) QueryRowContext(context.Context, string, ...any) *sql.Row {
+func (fakeTxSession) QueryRowContext(context.Context, string, ...any) db.RowScanner {
 	return nil
 }
 
@@ -120,6 +120,84 @@ func TestRegistryGenericScenarioUsesRealImplementation(t *testing.T) {
 	}
 	if got := queriesFromCalls(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
+	}
+}
+
+func TestRegistryFailureProbeUsesRealImplementation(t *testing.T) {
+	reg := NewRegistry()
+
+	s, ok := reg.Get("payment_bill_update_probe")
+	if !ok {
+		t.Fatal("payment_bill_update_probe not registered")
+	}
+
+	sess := &recordingTxSession{}
+	seedState := testPropertyMeSeedState()
+	slot := seedState.PropertyMe.PaymentBillUpdateProbeSlots[0]
+
+	err := s.Run(context.Background(), sess, seedState)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantQueries := []string{
+		"DELETE FROM payment WHERE id = ?",
+		"INSERT INTO payment (id, bill_id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?, ?)",
+		"UPDATE bill SET paid_cents = paid_cents + ?, version = version + 1 WHERE id = ?",
+	}
+	if got := queriesFromCalls(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+		t.Fatalf("queries = %v, want %v", got, wantQueries)
+	}
+
+	wantArgs := [][]any{
+		{slot.PaymentID},
+		{slot.PaymentID, slot.BillID, slot.JournalID, "pending", int64(450)},
+		{int64(450), slot.BillID},
+	}
+	if got := argsFromCalls(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+		t.Fatalf("args = %v, want %v", got, wantArgs)
+	}
+}
+
+func TestRegistryPropertyMeScenarioUsesRealImplementation(t *testing.T) {
+	reg := NewRegistry()
+
+	s, ok := reg.Get("pm_journal_posting_bill")
+	if !ok {
+		t.Fatal("pm_journal_posting_bill not registered")
+	}
+
+	sess := &recordingPropertyMeSession{}
+	seedState := testPropertyMeSeedState()
+	slot := seedState.PropertyMe.JournalPostingBillSlots[0]
+
+	err := s.Run(context.Background(), sess, seedState)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantQueries := []string{
+		"DELETE FROM bill WHERE id = ?",
+		"DELETE FROM posting WHERE id = ?",
+		"DELETE FROM journal WHERE id = ?",
+		"INSERT INTO journal (id, customer_id, folio_id, member_id, reference, amount_cents) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO posting (id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?)",
+		"INSERT INTO bill (id, journal_id, folio_id, status, total_cents, paid_cents) VALUES (?, ?, ?, ?, ?, ?)",
+	}
+	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+		t.Fatalf("queries = %v, want %v", got, wantQueries)
+	}
+
+	wantArgs := [][]any{
+		{slot.BillID},
+		{slot.PostingID},
+		{slot.JournalID},
+		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-journal", int64(1500)},
+		{slot.PostingID, slot.JournalID, "posted", int64(1500)},
+		{slot.BillID, slot.JournalID, slot.FolioID, "open", int64(1500), int64(0)},
+	}
+	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }
 

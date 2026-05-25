@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
 
@@ -46,7 +47,7 @@ func (s *recordingTxSession) ExecContext(_ context.Context, query string, args .
 	return nil, nil
 }
 
-func (s *recordingTxSession) QueryRowContext(context.Context, string, ...any) *sql.Row {
+func (s *recordingTxSession) QueryRowContext(context.Context, string, ...any) db.RowScanner {
 	return nil
 }
 

@@ -23,12 +23,12 @@ func NewRegistry() *Registry {
 	r.add(NewGenericInsertParentThenUpdateChildFK())
 	r.add(NewGenericDeleteParentCascade())
 	r.add(NewGenericConcurrentHotParentInsert())
-	r.add(failureProbePlaceholder("payment_bill_update_probe", paymentBillUpdateProbeExpectedError))
-	r.add(propertyMePlaceholder("pm_journal_posting_bill"))
-	r.add(propertyMePlaceholder("pm_folio_balance_update"))
-	r.add(propertyMePlaceholder("pm_fk_backfill"))
-	r.add(propertyMePlaceholder("pm_payment_mixed_references"))
-	r.add(propertyMePlaceholder("pm_cascade_path"))
+	r.add(NewPaymentBillUpdateProbe())
+	r.add(NewPMJournalPostingBill())
+	r.add(NewPMFolioBalanceUpdate())
+	r.add(NewPMFKBackfill())
+	r.add(NewPMPaymentMixedReferences())
+	r.add(NewPMCascadePath())
 
 	return r
 }

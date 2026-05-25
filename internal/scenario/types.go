@@ -39,7 +39,8 @@ func (m Metadata) MatchesExpectedError(err error) bool {
 }
 
 type SeedState struct {
-	Generic seed.GenericSeedPlan
+	Generic    seed.GenericSeedPlan
+	PropertyMe seed.PropertyMeSeedPlan
 }
 
 type Scenario interface {
