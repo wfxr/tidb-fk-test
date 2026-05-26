@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,16 +71,27 @@ type commandDeps struct {
 
 var lastErrorLogPath string
 
+const interruptedFinalizeTimeout = 10 * time.Second
+
 func main() {
-	cmd := newRootCommand(defaultCommandDeps())
-	if err := cmd.Execute(); err != nil {
+	os.Exit(runMain(os.Args[1:], defaultCommandDeps()))
+}
+
+func runMain(args []string, deps commandDeps) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	cmd := newRootCommand(deps)
+	cmd.SetArgs(args)
+	if err := cmd.ExecuteContext(ctx); err != nil {
 		if lastErrorLogPath != "" {
 			fmt.Fprintf(os.Stderr, "fk upgrade driver failed; see %s\n", lastErrorLogPath)
 		} else {
 			fmt.Fprintf(os.Stderr, "fk upgrade driver failed: %v\n", err)
 		}
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func defaultCommandDeps() commandDeps {
@@ -392,13 +405,28 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 			)
 		},
 	})
-	if err := engine.Run(ctx); err != nil {
-		return err
+	runErr := engine.Run(ctx)
+	runSummary := progressReporter.BuildSnapshot(runner.RunPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
+	interrupted := errors.Is(runErr, context.Canceled)
+	if runErr == nil || interrupted {
+		if interrupted {
+			printInterruptedRunNotice(os.Stdout)
+		}
+		printRunSummary(os.Stdout, runSummary, runtimeSummary.Scenarios())
+	}
+	if runErr != nil {
+		if interrupted {
+			finalizeCtx, cancel := context.WithTimeout(context.Background(), interruptedFinalizeTimeout)
+			defer cancel()
+			return runFinalChecks(finalizeCtx, db, applied, runtimeSummary)
+		}
+		return runErr
 	}
 
-	runSummary := progressReporter.BuildSnapshot(runner.RunPhase, scheduler.TotalWorkers(), runtimeSummary, time.Now())
-	printRunSummary(os.Stdout, runSummary, runtimeSummary.Scenarios())
+	return runFinalChecks(ctx, db, applied, runtimeSummary)
+}
 
+func runFinalChecks(ctx context.Context, db clusterConn, applied seed.AppliedState, runtimeSummary *report.Summary) error {
 	if err := syncProbeSummary(ctx, db, runtimeSummary); err != nil {
 		return err
 	}
@@ -412,7 +440,12 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 	return nil
 }
 
-func printRunSummary(out *os.File, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
+func printInterruptedRunNotice(out io.Writer) {
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "Run interrupted; printing partial summary and running checker with a %s timeout.\n", interruptedFinalizeTimeout)
+}
+
+func printRunSummary(out io.Writer, snapshot report.Snapshot, scenarios []report.ScenarioSummary) {
 	expectedOutcomes := snapshot.Success + snapshot.ExpectedFailure
 
 	fmt.Fprintln(out)
@@ -447,7 +480,7 @@ func printRunSummary(out *os.File, snapshot report.Snapshot, scenarios []report.
 	_ = w.Flush()
 }
 
-func printCheckerSummary(out *os.File, summary checker.Summary) {
+func printCheckerSummary(out io.Writer, summary checker.Summary) {
 	expectedOutcomes := summary.Runtime.Totals.Success + summary.Runtime.Totals.ExpectedFailure
 
 	fmt.Fprintln(out)
@@ -461,16 +494,15 @@ func printCheckerSummary(out *os.File, summary checker.Summary) {
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Check\tPassed\tCount\tExpected\tUnexpected")
+	fmt.Fprintln(w, "Check\tCount\tUnexpected\tPassed")
 	for _, item := range summary.Outcomes {
 		fmt.Fprintf(
 			w,
-			"%s\t%t\t%d\t%d\t%d\n",
+			"%s\t%d\t%d\t%t\n",
 			item.Name,
-			item.Passed,
 			item.Count,
-			item.ExpectedFKFailure,
 			item.UnexpectedFailure,
+			item.Passed,
 		)
 	}
 	_ = w.Flush()

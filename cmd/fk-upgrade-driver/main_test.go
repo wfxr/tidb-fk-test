@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
+	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
 )
 
@@ -176,4 +182,155 @@ func TestRunCommandRegistersCoreShorthands(t *testing.T) {
 	if got := cmd.Flag("progress-report-interval").Shorthand; got != "i" {
 		t.Fatalf("progress-report-interval shorthand = %q, want i", got)
 	}
+}
+
+func TestPrintCheckerSummaryOrdersColumnsAsCheckCountUnexpectedPassed(t *testing.T) {
+	var buf bytes.Buffer
+
+	printCheckerSummary(&buf, checker.Summary{
+		Outcomes: []checker.Outcome{
+			{
+				Name:              "probe_error_match",
+				Passed:            true,
+				Count:             7,
+				ExpectedFKFailure: 5,
+				UnexpectedFailure: 2,
+			},
+		},
+	})
+
+	output := buf.String()
+	lines := strings.Split(output, "\n")
+	var headerLine string
+	var rowLine string
+	for _, line := range lines {
+		if strings.Contains(line, "Check") && strings.Contains(line, "Unexpected") && strings.Contains(line, "Passed") {
+			headerLine = line
+		}
+		if strings.Contains(line, "probe_error_match") {
+			rowLine = line
+		}
+	}
+
+	if got := strings.Fields(headerLine); strings.Join(got, ",") != "Check,Count,Unexpected,Passed" {
+		t.Fatalf("header fields = %v, want [Check Count Unexpected Passed]", got)
+	}
+	if got := strings.Fields(rowLine); strings.Join(got, ",") != "probe_error_match,7,2,true" {
+		t.Fatalf("row fields = %v, want [probe_error_match 7 2 true]", got)
+	}
+}
+
+func TestRunWorkloadPrintsSummaryWhenContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cfg := config.Default()
+	cfg.RunDuration = time.Minute
+	cfg.ProgressReportInterval = 0
+
+	db := &stubRunClusterConn{}
+	output := captureStdout(t, func() {
+		err := runWorkload(
+			ctx,
+			cfg,
+			time.Date(2026, time.May, 26, 10, 0, 0, 0, time.UTC),
+			db,
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+		)
+		if err != nil {
+			t.Fatalf("runWorkload() error = %v, want nil", err)
+		}
+	})
+
+	if !strings.Contains(output, "Run Summary") {
+		t.Fatalf("stdout = %q, want Run Summary", output)
+	}
+	if !strings.Contains(output, "Run interrupted") {
+		t.Fatalf("stdout = %q, want interruption notice", output)
+	}
+	if !strings.Contains(output, "Checker Summary") {
+		t.Fatalf("stdout = %q, want checker summary after interruption", output)
+	}
+	if db.beginCalls != 0 {
+		t.Fatalf("BeginTx calls = %d, want 0", db.beginCalls)
+	}
+	if db.execCalls != 1 {
+		t.Fatalf("ExecContext calls = %d, want 1", db.execCalls)
+	}
+	if db.queryCalls != 3 {
+		t.Fatalf("QueryRowContext calls = %d, want 3", db.queryCalls)
+	}
+	if db.canceledExecCalls != 0 {
+		t.Fatalf("ExecContext canceled calls = %d, want 0", db.canceledExecCalls)
+	}
+	if db.canceledQueryCalls != 0 {
+		t.Fatalf("QueryRowContext canceled calls = %d, want 0", db.canceledQueryCalls)
+	}
+}
+
+type stubRunClusterConn struct {
+	beginCalls         int
+	execCalls          int
+	queryCalls         int
+	canceledExecCalls  int
+	canceledQueryCalls int
+}
+
+func (s *stubRunClusterConn) BeginTx(context.Context, *sql.TxOptions) (dbpkg.Tx, error) {
+	s.beginCalls++
+	return nil, context.Canceled
+}
+
+func (s *stubRunClusterConn) ExecContext(ctx context.Context, _ string, _ ...any) (sql.Result, error) {
+	s.execCalls++
+	if ctx.Err() != nil {
+		s.canceledExecCalls++
+	}
+	return nil, nil
+}
+
+func (s *stubRunClusterConn) QueryRowContext(ctx context.Context, _ string, _ ...any) dbpkg.RowScanner {
+	s.queryCalls++
+	if ctx.Err() != nil {
+		s.canceledQueryCalls++
+	}
+	return stubRunRow{}
+}
+
+func (s *stubRunClusterConn) Close() error {
+	return nil
+}
+
+type stubRunRow struct{}
+
+func (stubRunRow) Scan(...any) error {
+	return nil
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	readPipe, writePipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() error = %v", err)
+	}
+	os.Stdout = writePipe
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	fn()
+
+	if err := writePipe.Close(); err != nil {
+		t.Fatalf("writePipe.Close() error = %v", err)
+	}
+	output, err := io.ReadAll(readPipe)
+	if err != nil {
+		t.Fatalf("io.ReadAll() error = %v", err)
+	}
+	if err := readPipe.Close(); err != nil {
+		t.Fatalf("readPipe.Close() error = %v", err)
+	}
+	return string(output)
 }
