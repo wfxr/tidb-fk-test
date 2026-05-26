@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	ilog "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/logging"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
 )
@@ -50,6 +52,7 @@ type EngineConfig struct {
 	NewTicker   func(time.Duration) ticker
 	Now         func() time.Time
 	OnProgress  func(report.Snapshot)
+	ErrorLogger *slog.Logger
 }
 
 type Engine struct {
@@ -65,6 +68,7 @@ type Engine struct {
 	now           func() time.Time
 	onProgress    func(report.Snapshot)
 	stopRequested atomic.Bool
+	errorLogger   *slog.Logger
 }
 
 type workerPlan struct {
@@ -86,6 +90,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		newTicker:   cfg.NewTicker,
 		now:         cfg.Now,
 		onProgress:  cfg.OnProgress,
+		errorLogger: cfg.ErrorLogger,
 	}
 	if engine.after == nil {
 		engine.after = time.After
@@ -183,7 +188,7 @@ func (e *Engine) workerLoop(ctx context.Context, plan workerPlan) {
 			return
 		}
 
-		e.runWorkerStep(ctx, plan.nextScenario())
+		e.runWorkerStep(ctx, plan.worker.ID, plan.nextScenario())
 	}
 }
 
@@ -193,7 +198,7 @@ func (p *workerPlan) nextScenario() scenario.Scenario {
 	return item
 }
 
-func (e *Engine) runWorkerStep(ctx context.Context, item scenario.Scenario) {
+func (e *Engine) runWorkerStep(ctx context.Context, workerID int, item scenario.Scenario) {
 	if e.shouldStop(ctx) {
 		return
 	}
@@ -204,7 +209,7 @@ func (e *Engine) runWorkerStep(ctx context.Context, item scenario.Scenario) {
 		if e.shouldIgnoreStopArtifact(ctx, err) {
 			return
 		}
-		e.summary.RecordClassified(meta, err, e.now())
+		e.recordAndLogError(workerID, meta, "begin_tx", err)
 		return
 	}
 
@@ -213,7 +218,7 @@ func (e *Engine) runWorkerStep(ctx context.Context, item scenario.Scenario) {
 		if e.shouldIgnoreStopArtifact(ctx, err) {
 			return
 		}
-		e.summary.RecordClassified(meta, err, e.now())
+		e.recordAndLogError(workerID, meta, "run", err)
 		return
 	}
 
@@ -222,7 +227,7 @@ func (e *Engine) runWorkerStep(ctx context.Context, item scenario.Scenario) {
 		if e.shouldIgnoreStopArtifact(ctx, err) {
 			return
 		}
-		e.summary.RecordClassified(meta, err, e.now())
+		e.recordAndLogError(workerID, meta, "commit", err)
 		return
 	}
 
@@ -286,4 +291,18 @@ func (e *Engine) shouldIgnoreStopArtifact(ctx context.Context, err error) bool {
 
 	normalized := strings.ToLower(err.Error())
 	return strings.Contains(normalized, "context canceled")
+}
+
+func (e *Engine) recordAndLogError(workerID int, meta scenario.Metadata, step string, err error) {
+	result := e.summary.RecordClassified(meta, err, e.now())
+	ilog.LogEvent(e.errorLogger, ilog.Event{
+		Timestamp:    e.now(),
+		Phase:        RunPhase,
+		Scenario:     meta.Name,
+		WorkerID:     workerID,
+		TxnName:      meta.Name,
+		StepName:     step,
+		ClassifiedAs: result.Kind,
+		ErrorText:    result.ErrorText,
+	})
 }

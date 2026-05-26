@@ -1,10 +1,13 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -392,13 +395,50 @@ func TestEngineRunWorkerStepSkipsBeginTxAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	engine.runWorkerStep(ctx, registry.all[0])
+	engine.runWorkerStep(ctx, 0, registry.all[0])
 
 	if session.beginCalls != 0 {
 		t.Fatalf("BeginTx calls = %d, want 0", session.beginCalls)
 	}
 	if got := summary.Totals(); got != (report.Totals{}) {
 		t.Fatalf("Totals() = %#v, want zero totals", got)
+	}
+}
+
+func TestEngineRunWorkerStepLogsUnexpectedErrorToErrorLogger(t *testing.T) {
+	registry := newStubRegistry(
+		newStubScenario("generic_success", scenario.GenericGroup, errors.New("driver: bad connection"), nil),
+	)
+	summary := report.NewSummary(registry.All())
+	session := &stubSession{}
+	var buf bytes.Buffer
+	engine := NewEngine(EngineConfig{
+		Session:     session,
+		Registry:    registry,
+		Scheduler:   Scheduler{GenericWorkers: 1},
+		SeedState:   scenario.SeedState{},
+		Summary:     summary,
+		Progress:    report.NewProgressReporter(time.Second),
+		RunDuration: time.Minute,
+		Now: func() time.Time {
+			return time.Date(2026, time.May, 25, 12, 50, 0, 0, time.UTC)
+		},
+		ErrorLogger: slog.New(slog.NewJSONHandler(&buf, nil)),
+	})
+
+	engine.runWorkerStep(context.Background(), 7, registry.all[0])
+
+	if !strings.Contains(buf.String(), "\"scenario\":\"generic_success\"") {
+		t.Fatalf("log output = %q, want scenario field", buf.String())
+	}
+	if !strings.Contains(buf.String(), "\"worker_id\":7") {
+		t.Fatalf("log output = %q, want worker_id field", buf.String())
+	}
+	if !strings.Contains(buf.String(), "\"step_name\":\"run\"") {
+		t.Fatalf("log output = %q, want step_name=run", buf.String())
+	}
+	if !strings.Contains(buf.String(), "\"classified_as\":\"infra_or_upgrade_transient\"") {
+		t.Fatalf("log output = %q, want infra_or_upgrade_transient classification", buf.String())
 	}
 }
 

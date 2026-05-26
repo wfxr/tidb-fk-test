@@ -16,11 +16,12 @@ The current `cmd/fk-upgrade-driver` binary exposes two subcommands:
   - reads `fk_prepare_metadata`
   - rebuilds the deterministic seed plan in memory
   - validates that key prepared rows still exist
-  - runs the bounded workload for `--duration`
-  - emits recurring `run progress snapshot` logs on
-    `--progress-report-interval`
-  - prints `Run Summary`
-  - always executes checker queries and prints `Checker Summary`
+- runs the bounded workload for `--duration`
+- emits recurring `run progress snapshot` logs on
+  `--progress-report-interval`
+- prints `Error log: logs/error-<epoch>.log` at startup
+- prints `Run Summary`
+- always executes checker queries and prints `Checker Summary`
 
 Connection defaults:
 
@@ -101,12 +102,15 @@ go run ./cmd/fk-upgrade-driver run \
 Expected result with the current bounded run path:
 
 - exit code `0`
+- one console line printing `Error log: logs/error-<epoch>.log`
 - one startup log line with message `starting fk upgrade driver`
 - `initial_phase=run`
 - recurring `run progress snapshot` logs while the `3s` duration is still
   active
 - one printed `Run Summary`
 - one printed `Checker Summary`
+- detailed runtime error events are written to the error log file rather than
+  printed in the console summaries
 - non-zero `ExpectedFailure` counts if the target TiDB reproduces the current
   two explicit parent-upgrade probes under shared-lock checking
 
@@ -123,5 +127,7 @@ What you should not expect yet:
   `fk_prepare_metadata`.
 - You do not need to manually `SET SESSION tidb_foreign_key_check_in_shared_lock = 1`.
   The driver issues that statement for each worker transaction.
+- If a run fails, check the printed `logs/error-<epoch>.log` path first. The
+  console output is intentionally concise and does not echo full error details.
 - If you want a faster local smoke path, shorten `--duration`. Checker is
   always enabled for `run`.

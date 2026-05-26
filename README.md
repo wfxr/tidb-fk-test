@@ -30,6 +30,9 @@ It is still a smoke-path driver, not a full rolling-upgrade controller.
   `--progress-report-interval` while the workload is active.
 - `run` prints a final `Run Summary`, then always runs checker validation and
   prints a `Checker Summary`.
+- `run` prints an `Error log: logs/error-<epoch>.log` line at startup.
+- Detailed runtime errors are written to the error log file, not printed to the
+  console.
 - The current bounded path includes two expected-failure probes:
   - `payment_bill_update_probe`
   - `statement_folio_parent_update_probe`
@@ -71,12 +74,15 @@ go run ./cmd/fk-upgrade-driver run \
 
 Expected run behavior on a reachable local playground:
 
+- the command prints `Error log: logs/error-<epoch>.log`
 - the command logs `starting fk upgrade driver`
 - the log includes `initial_phase=run`
 - the command emits recurring `run progress snapshot` lines while the workload
   is still active
 - the command prints `Run Summary`
 - the command prints `Checker Summary`
+- detailed per-error lines are written to the error log file instead of being
+  echoed to the console summaries
 - the runtime summary should show non-zero `ExpectedFailure` counts for the two
   explicit expected-failure probes when the target TiDB honors shared-lock FK
   checking

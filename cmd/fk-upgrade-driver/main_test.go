@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -120,7 +121,7 @@ func TestRootCommandRejectsLegacyConfigFlag(t *testing.T) {
 			t.Fatal("prepare should not run")
 			return seed.AppliedState{}, nil
 		},
-		run: func(context.Context, config.Config, time.Time, clusterConn) error {
+		run: func(context.Context, config.Config, time.Time, clusterConn, *slog.Logger) error {
 			t.Fatal("run should not run")
 			return nil
 		},

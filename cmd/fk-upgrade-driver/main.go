@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -17,6 +18,7 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
 	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	ilog "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/logging"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/runner"
 	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
@@ -60,15 +62,21 @@ type commandDeps struct {
 	now                  func() time.Time
 	openCluster          func(context.Context, []string) (clusterConn, error)
 	prepare              func(context.Context, config.Config, clusterConn) (seed.AppliedState, error)
-	run                  func(context.Context, config.Config, time.Time, clusterConn) error
+	run                  func(context.Context, config.Config, time.Time, clusterConn, *slog.Logger) error
 	readPreparedMetadata func(context.Context, preparedMetadataReader) (seed.PreparedMetadata, error)
 	validatePrepared     func(context.Context, preparedMetadataReader, seed.AppliedState) error
 }
 
+var lastErrorLogPath string
+
 func main() {
 	cmd := newRootCommand(defaultCommandDeps())
 	if err := cmd.Execute(); err != nil {
-		slog.Error("fk upgrade driver failed", "error", err)
+		if lastErrorLogPath != "" {
+			fmt.Fprintf(os.Stderr, "fk upgrade driver failed; see %s\n", lastErrorLogPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "fk upgrade driver failed: %v\n", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -82,8 +90,8 @@ func defaultCommandDeps() commandDeps {
 		prepare: func(ctx context.Context, cfg config.Config, db clusterConn) (seed.AppliedState, error) {
 			return seed.ApplyAll(ctx, db, cfg)
 		},
-		run: func(ctx context.Context, cfg config.Config, now time.Time, db clusterConn) error {
-			return runWorkload(ctx, cfg, now, db)
+		run: func(ctx context.Context, cfg config.Config, now time.Time, db clusterConn, errorLogger *slog.Logger) error {
+			return runWorkload(ctx, cfg, now, db, errorLogger)
 		},
 		readPreparedMetadata: func(ctx context.Context, reader preparedMetadataReader) (seed.PreparedMetadata, error) {
 			return seed.ReadPreparedMetadata(ctx, reader)
@@ -177,12 +185,22 @@ func newRunCommand(deps commandDeps) *cobra.Command {
 		Short: "Execute workload against a previously prepared database and run checks",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			errorLogPath, errorLogger, logFile, err := newErrorLogger(deps.now())
+			if err != nil {
+				return err
+			}
+			defer logFile.Close()
+			lastErrorLogPath = errorLogPath
+			fmt.Fprintf(cmd.OutOrStdout(), "Error log: %s\n", errorLogPath)
+
 			baseCfg, err := buildRunConfig(opts, seed.PreparedMetadata{})
 			if err != nil {
+				logCommandError(errorLogger, "build_run_config", err)
 				return err
 			}
 			db, err := deps.openCluster(ctx, baseCfg.DSN)
 			if err != nil {
+				logCommandError(errorLogger, "open_cluster", err)
 				return err
 			}
 			defer db.Close()
@@ -190,27 +208,37 @@ func newRunCommand(deps commandDeps) *cobra.Command {
 			metadata, err := deps.readPreparedMetadata(ctx, db)
 			if err != nil {
 				if errors.Is(err, seed.ErrPrepareMetadataNotFound) {
+					logCommandError(errorLogger, "read_prepared_metadata", err)
 					return fmt.Errorf("prepare metadata not found: run `fk-upgrade-driver prepare` first")
 				}
+				logCommandError(errorLogger, "read_prepared_metadata", err)
 				return err
 			}
 			if metadata.SeedPlanVersion != seed.SeedPlanVersion {
-				return fmt.Errorf(
+				err = fmt.Errorf(
 					"prepare metadata seed plan version %d is incompatible with binary version %d; rerun `fk-upgrade-driver prepare`",
 					metadata.SeedPlanVersion,
 					seed.SeedPlanVersion,
 				)
+				logCommandError(errorLogger, "validate_prepare_metadata", err)
+				return err
 			}
 
 			cfg, err := buildRunConfig(opts, metadata)
 			if err != nil {
+				logCommandError(errorLogger, "build_run_config", err)
 				return err
 			}
 			applied := seed.BuildAppliedState(cfg)
 			if err := deps.validatePrepared(ctx, db, applied); err != nil {
+				logCommandError(errorLogger, "validate_prepared_state", err)
 				return err
 			}
-			return deps.run(ctx, cfg, deps.now(), db)
+			if err := deps.run(ctx, cfg, deps.now(), db, errorLogger); err != nil {
+				logCommandError(errorLogger, "run_workload", err)
+				return err
+			}
+			return nil
 		},
 	}
 	addConnectionFlags(cmd, &opts.connectionOptions)
@@ -318,7 +346,7 @@ func parseNodes(value string) ([]nodeEndpoint, error) {
 	return endpoints, nil
 }
 
-func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clusterConn) error {
+func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clusterConn, errorLogger *slog.Logger) error {
 	registry := scenario.NewRegistry()
 	scenarios := registry.All()
 	runtimeSummary := report.NewSummary(scenarios)
@@ -350,6 +378,7 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 		Progress:    progressReporter,
 		RunDuration: cfg.RunDuration,
 		Now:         time.Now,
+		ErrorLogger: errorLogger,
 		OnProgress: func(snapshot report.Snapshot) {
 			slog.Info(
 				"run progress snapshot",
@@ -399,25 +428,20 @@ func printRunSummary(out *os.File, snapshot report.Snapshot, scenarios []report.
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Scenario\tExecuted\tSuccess\tFail\tUnexpected\tLast Error")
+	fmt.Fprintln(w, "Scenario\tExecuted\tSuccess\tFail\tUnexpected")
 	for _, item := range scenarios {
 		if item.Executed == 0 && item.ExpectedFailure == 0 && item.UnexpectedFailure == 0 {
 			continue
 		}
-		lastError := item.LastErrorText
-		if lastError == "" {
-			lastError = "-"
-		}
 		failures := item.ExpectedFailure + item.UnexpectedFailure
 		fmt.Fprintf(
 			w,
-			"%s\t%d\t%d\t%d\t%d\t%s\n",
+			"%s\t%d\t%d\t%d\t%d\n",
 			item.Name,
 			item.Executed,
 			item.Success,
 			failures,
 			item.UnexpectedFailure,
-			lastError,
 		)
 	}
 	_ = w.Flush()
@@ -477,4 +501,23 @@ type checkerQueryer struct {
 
 func (q checkerQueryer) QueryRowContext(ctx context.Context, query string, args ...any) checker.RowScanner {
 	return q.Queryer.QueryRowContext(ctx, query, args...)
+}
+
+func newErrorLogger(now time.Time) (string, *slog.Logger, *os.File, error) {
+	if err := os.MkdirAll("logs", 0o755); err != nil {
+		return "", nil, nil, err
+	}
+	path := filepath.Join("logs", fmt.Sprintf("error-%d.log", now.Unix()))
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return path, ilog.NewJSONLogger(file), file, nil
+}
+
+func logCommandError(logger *slog.Logger, step string, err error) {
+	if logger == nil || err == nil {
+		return
+	}
+	logger.Error("command_error", "phase", runner.RunPhase, "step_name", step, "error_text", err.Error())
 }

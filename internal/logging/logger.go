@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"io"
 	"log/slog"
 	"time"
 
@@ -24,6 +25,10 @@ func LogEvent(logger *slog.Logger, event Event) {
 	}
 
 	logger.Info("workload_event", event.logArgs()...)
+}
+
+func NewJSONLogger(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, nil))
 }
 
 func (e Event) logArgs() []any {
