@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/model"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/model"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
 )
 
 type Totals struct {

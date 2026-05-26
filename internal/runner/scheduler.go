@@ -3,8 +3,8 @@ package runner
 import (
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
 )
 
 type Worker struct {
@@ -14,7 +14,7 @@ type Worker struct {
 
 type Scheduler struct {
 	GenericWorkers      int
-	PropertyMeWorkers   int
+	BillingWorkers      int
 	FailureProbeWorkers int
 	ProgressInterval    time.Duration
 }
@@ -22,14 +22,14 @@ type Scheduler struct {
 func NewScheduler(cfg config.Config) Scheduler {
 	return Scheduler{
 		GenericWorkers:      cfg.GenericWorkers,
-		PropertyMeWorkers:   cfg.PropertyMeWorkers,
+		BillingWorkers:      cfg.BillingWorkers,
 		FailureProbeWorkers: cfg.FailureProbeWorkers,
 		ProgressInterval:    cfg.ProgressReportInterval,
 	}
 }
 
 func (s Scheduler) TotalWorkers() int {
-	return s.GenericWorkers + s.PropertyMeWorkers + s.FailureProbeWorkers
+	return s.GenericWorkers + s.BillingWorkers + s.FailureProbeWorkers
 }
 
 func (s Scheduler) Workers() []Worker {
@@ -47,7 +47,7 @@ func (s Scheduler) Workers() []Worker {
 	}
 
 	appendGroup(scenario.GenericGroup, s.GenericWorkers)
-	appendGroup(scenario.PropertyMeGroup, s.PropertyMeWorkers)
+	appendGroup(scenario.BillingGroup, s.BillingWorkers)
 	appendGroup(scenario.FailureProbeGroup, s.FailureProbeWorkers)
 
 	return workers

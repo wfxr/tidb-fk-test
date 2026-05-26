@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/model"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/model"
 )
 
 type Event struct {

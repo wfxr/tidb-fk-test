@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/model"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/model"
 )
 
 func TestLogEventWritesStructuredJSON(t *testing.T) {

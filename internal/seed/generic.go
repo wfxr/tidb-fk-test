@@ -1,6 +1,6 @@
 package seed
 
-import "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+import "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 
 const genericFixturePoolSize = 4
 

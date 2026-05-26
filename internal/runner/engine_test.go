@@ -12,17 +12,17 @@ import (
 	"testing"
 	"time"
 
-	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/model"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/model"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 func TestEngineRunExecutesWorkersAndRecordsSummary(t *testing.T) {
 	seedState := scenario.SeedState{
-		Generic:    seed.GenericSeedPlan{ExistingParentID: 77},
-		PropertyMe: seed.PropertyMeSeedPlan{ExistingBillID: 88},
+		Generic: seed.GenericSeedPlan{ExistingParentID: 77},
+		Billing: seed.BillingSeedPlan{ExistingBillID: 88},
 	}
 	startedCh := make(chan string, 2)
 	releaseCh := make(chan struct{})

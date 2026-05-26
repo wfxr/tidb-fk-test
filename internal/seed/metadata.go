@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
 )
 
 const (
@@ -101,15 +101,15 @@ func ValidatePreparedState(ctx context.Context, db metadataReader, applied Appli
 			args:  []any{applied.Generic.ExistingParentID},
 		})
 	}
-	if applied.PropertyMe.ExistingBillID != 0 {
+	if applied.Billing.ExistingBillID != 0 {
 		checks = append(checks, struct {
 			name  string
 			query string
 			args  []any
 		}{
-			name:  "propertyme seed bill",
+			name:  "billing seed bill",
 			query: "SELECT COUNT(*) FROM bill WHERE id = ?",
-			args:  []any{applied.PropertyMe.ExistingBillID},
+			args:  []any{applied.Billing.ExistingBillID},
 		})
 	}
 

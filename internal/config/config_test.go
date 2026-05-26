@@ -11,8 +11,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.GenericWorkers != 4 {
 		t.Fatalf("GenericWorkers = %d, want 4", cfg.GenericWorkers)
 	}
-	if cfg.PropertyMeWorkers != 3 {
-		t.Fatalf("PropertyMeWorkers = %d, want 3", cfg.PropertyMeWorkers)
+	if cfg.BillingWorkers != 3 {
+		t.Fatalf("BillingWorkers = %d, want 3", cfg.BillingWorkers)
 	}
 	if cfg.FailureProbeWorkers != 1 {
 		t.Fatalf("FailureProbeWorkers = %d, want 1", cfg.FailureProbeWorkers)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
 )
 
 type paymentBillUpdateProbe struct {
@@ -35,14 +35,14 @@ func (s *paymentBillUpdateProbe) Meta() Metadata {
 }
 
 func (s *paymentBillUpdateProbe) Run(ctx context.Context, sess db.TxSession, seedState SeedState) error {
-	if missingPropertyMeSeedPlan(seedState.PropertyMe) {
-		return fmt.Errorf("payment_bill_update_probe: propertyme seed plan required")
+	if missingBillingSeedPlan(seedState.Billing) {
+		return fmt.Errorf("payment_bill_update_probe: billing seed plan required")
 	}
 
 	run := s.runCounter.Add(1) - 1
 	slot, err := selectPoolSlot(
 		"payment_bill_update_probe",
-		seedState.PropertyMe.PaymentBillUpdateProbeSlots,
+		seedState.Billing.PaymentBillUpdateProbeSlots,
 		run,
 		"payment/bill update probe fixture slots",
 	)
@@ -81,14 +81,14 @@ func (s *statementFolioParentUpdateProbe) Meta() Metadata {
 }
 
 func (s *statementFolioParentUpdateProbe) Run(ctx context.Context, sess db.TxSession, seedState SeedState) error {
-	if missingPropertyMeSeedPlan(seedState.PropertyMe) {
-		return fmt.Errorf("statement_folio_parent_update_probe: propertyme seed plan required")
+	if missingBillingSeedPlan(seedState.Billing) {
+		return fmt.Errorf("statement_folio_parent_update_probe: billing seed plan required")
 	}
 
 	run := s.runCounter.Add(1) - 1
 	slot, err := selectPoolSlot(
 		"statement_folio_parent_update_probe",
-		seedState.PropertyMe.StatementFolioParentUpdateProbeSlots,
+		seedState.Billing.StatementFolioParentUpdateProbeSlots,
 		run,
 		"statement/folio parent-update probe fixture slots",
 	)

@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	ilog "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/logging"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	ilog "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/logging"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
 )
 
 const RunPhase = "run"

@@ -43,8 +43,8 @@ func TestStatementFolioParentUpdateProbeMetadata(t *testing.T) {
 
 func TestPaymentBillUpdateProbeOrder(t *testing.T) {
 	sess := &recordingTxSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.PaymentBillUpdateProbeSlots[0]
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.PaymentBillUpdateProbeSlots[0]
 
 	err := NewPaymentBillUpdateProbe().Run(context.Background(), sess, seedState)
 	if err != nil {
@@ -75,10 +75,10 @@ func TestPaymentBillUpdateProbeRequiresRuntimeSeedPlan(t *testing.T) {
 
 	err := NewPaymentBillUpdateProbe().Run(context.Background(), sess, SeedState{})
 	if err == nil {
-		t.Fatal("Run() error = nil, want missing propertyme seed plan error")
+		t.Fatal("Run() error = nil, want missing billing seed plan error")
 	}
-	if !strings.Contains(err.Error(), "propertyme seed plan required") {
-		t.Fatalf("Run() error = %v, want missing propertyme seed plan error", err)
+	if !strings.Contains(err.Error(), "billing seed plan required") {
+		t.Fatalf("Run() error = %v, want missing billing seed plan error", err)
 	}
 	if got := len(sess.calls); got != 0 {
 		t.Fatalf("len(calls) = %d, want 0", got)
@@ -87,8 +87,8 @@ func TestPaymentBillUpdateProbeRequiresRuntimeSeedPlan(t *testing.T) {
 
 func TestStatementFolioParentUpdateProbeOrder(t *testing.T) {
 	sess := &recordingTxSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.StatementFolioParentUpdateProbeSlots[0]
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.StatementFolioParentUpdateProbeSlots[0]
 
 	err := NewStatementFolioParentUpdateProbe().Run(context.Background(), sess, seedState)
 	if err != nil {
@@ -119,10 +119,10 @@ func TestStatementFolioParentUpdateProbeRequiresRuntimeSeedPlan(t *testing.T) {
 
 	err := NewStatementFolioParentUpdateProbe().Run(context.Background(), sess, SeedState{})
 	if err == nil {
-		t.Fatal("Run() error = nil, want missing propertyme seed plan error")
+		t.Fatal("Run() error = nil, want missing billing seed plan error")
 	}
-	if !strings.Contains(err.Error(), "propertyme seed plan required") {
-		t.Fatalf("Run() error = %v, want missing propertyme seed plan error", err)
+	if !strings.Contains(err.Error(), "billing seed plan required") {
+		t.Fatalf("Run() error = %v, want missing billing seed plan error", err)
 	}
 	if got := len(sess.calls); got != 0 {
 		t.Fatalf("len(calls) = %d, want 0", got)
@@ -131,8 +131,8 @@ func TestStatementFolioParentUpdateProbeRequiresRuntimeSeedPlan(t *testing.T) {
 
 func TestStatementFolioParentUpdateProbeRequiresDedicatedFixtureSlots(t *testing.T) {
 	sess := &recordingTxSession{}
-	seedState := testPropertyMeSeedState()
-	seedState.PropertyMe.StatementFolioParentUpdateProbeSlots = nil
+	seedState := testBillingSeedState()
+	seedState.Billing.StatementFolioParentUpdateProbeSlots = nil
 
 	err := NewStatementFolioParentUpdateProbe().Run(context.Background(), sess, seedState)
 	if err == nil {
@@ -153,7 +153,7 @@ func TestPaymentBillUpdateProbeStopsOnUpdateError(t *testing.T) {
 		err:    wantErr,
 	}
 
-	err := NewPaymentBillUpdateProbe().Run(context.Background(), sess, testPropertyMeSeedState())
+	err := NewPaymentBillUpdateProbe().Run(context.Background(), sess, testBillingSeedState())
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want %v", err, wantErr)
 	}
@@ -169,7 +169,7 @@ func TestStatementFolioParentUpdateProbeStopsOnUpdateError(t *testing.T) {
 		err:    wantErr,
 	}
 
-	err := NewStatementFolioParentUpdateProbe().Run(context.Background(), sess, testPropertyMeSeedState())
+	err := NewStatementFolioParentUpdateProbe().Run(context.Background(), sess, testBillingSeedState())
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want %v", err, wantErr)
 	}

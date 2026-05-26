@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
 )
 
 func TestReadPreparedMetadataReturnsPersistedSeedInputs(t *testing.T) {

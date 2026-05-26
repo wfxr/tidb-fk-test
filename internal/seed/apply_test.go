@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 )
 
 func TestApplyAllCreatesRealSchemaAndSeedsFixtureRows(t *testing.T) {
@@ -27,9 +27,9 @@ func TestApplyAllCreatesRealSchemaAndSeedsFixtureRows(t *testing.T) {
 	wantPhases := []string{
 		phaseApplyMetadataSchema,
 		phaseApplyGenericSchema,
-		phaseApplyPropertyMeSchema,
+		phaseApplyBillingSchema,
 		phaseSeedGenericFixtures,
-		phaseSeedPropertyMeFixtures,
+		phaseSeedBillingFixtures,
 		phaseRecordPrepareMetadata,
 	}
 	if !reflect.DeepEqual(applied.CompletedPhases, wantPhases) {
@@ -80,36 +80,36 @@ func TestApplyAllCreatesRealSchemaAndSeedsFixtureRows(t *testing.T) {
 		}
 	}
 
-	wantPropertyMeRows := map[string]int{
-		"customer":     len(applied.PropertyMe.CustomerIDs),
-		"folio":        len(applied.PropertyMe.FolioIDs),
-		"journal":      expectedJournalSeedRows(applied.PropertyMe),
-		"posting":      len(applied.PropertyMe.JournalPostingBillSlots),
-		"bill":         expectedBillSeedRows(applied.PropertyMe),
-		"payment":      len(applied.PropertyMe.PaymentMixedReferenceSlots) + len(applied.PropertyMe.PaymentBillUpdateProbeSlots),
-		"foliobalance": len(applied.PropertyMe.FolioBalanceUpdateSlots),
-		"feelog":       len(applied.PropertyMe.FKBackfillSlots),
-		"statement":    len(applied.PropertyMe.FKBackfillSlots) + len(applied.PropertyMe.CascadePathSlots),
-		"withdrawal":   len(applied.PropertyMe.FKBackfillSlots) + len(applied.PropertyMe.CascadePathSlots),
+	wantBillingRows := map[string]int{
+		"customer":     len(applied.Billing.CustomerIDs),
+		"folio":        len(applied.Billing.FolioIDs),
+		"journal":      expectedJournalSeedRows(applied.Billing),
+		"posting":      len(applied.Billing.JournalPostingBillSlots),
+		"bill":         expectedBillSeedRows(applied.Billing),
+		"payment":      len(applied.Billing.PaymentMixedReferenceSlots) + len(applied.Billing.PaymentBillUpdateProbeSlots),
+		"foliobalance": len(applied.Billing.FolioBalanceUpdateSlots),
+		"feelog":       len(applied.Billing.FKBackfillSlots),
+		"statement":    len(applied.Billing.FKBackfillSlots) + len(applied.Billing.CascadePathSlots),
+		"withdrawal":   len(applied.Billing.FKBackfillSlots) + len(applied.Billing.CascadePathSlots),
 	}
-	for table, want := range wantPropertyMeRows {
+	for table, want := range wantBillingRows {
 		if got := db.insertedRows[table]; got != want {
-			t.Fatalf("propertyme inserted rows for %s = %d, want %d", table, got, want)
+			t.Fatalf("billing inserted rows for %s = %d, want %d", table, got, want)
 		}
 	}
 
 	if got, want := applied.Generic.ExistingParentID, int64(1); got != want {
 		t.Fatalf("Generic.ExistingParentID = %d, want %d", got, want)
 	}
-	if got, want := applied.PropertyMe.ExistingBillID, int64(4001); got != want {
-		t.Fatalf("PropertyMe.ExistingBillID = %d, want %d", got, want)
+	if got, want := applied.Billing.ExistingBillID, int64(4001); got != want {
+		t.Fatalf("Billing.ExistingBillID = %d, want %d", got, want)
 	}
 }
 
 func TestApplyAllStopsAtFirstPhaseError(t *testing.T) {
 	db := newRecordingExec()
 	db.failOnQueryContaining = "CREATE TABLE IF NOT EXISTS customer"
-	db.err = errors.New("propertyme schema failed")
+	db.err = errors.New("billing schema failed")
 
 	applied, err := ApplyAll(context.Background(), db, config.Config{
 		SeedParentRowsPerTable: 2,
@@ -256,14 +256,14 @@ func insertedTableName(query string) (string, bool) {
 	return name, ok
 }
 
-func expectedJournalSeedRows(plan PropertyMeSeedPlan) int {
+func expectedJournalSeedRows(plan BillingSeedPlan) int {
 	if len(plan.CustomerIDs) == 0 {
 		return 0
 	}
 	return 1 + len(plan.JournalPostingBillSlots) + len(plan.FKBackfillSlots) + len(plan.PaymentMixedReferenceSlots)
 }
 
-func expectedBillSeedRows(plan PropertyMeSeedPlan) int {
+func expectedBillSeedRows(plan BillingSeedPlan) int {
 	if len(plan.CustomerIDs) == 0 {
 		return 0
 	}

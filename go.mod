@@ -1,4 +1,4 @@
-module github.com/wenxuan/dev/tidbcloud/upgrade-poc
+module github.com/wenxuan/dev/tidbcloud/tidb-fk-test
 
 go 1.26.0
 

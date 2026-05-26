@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
 )
 
 func TestNewSchedulerBuildsFixedWorkerGroups(t *testing.T) {
@@ -16,20 +16,20 @@ func TestNewSchedulerBuildsFixedWorkerGroups(t *testing.T) {
 	if scheduler.ProgressInterval != cfg.ProgressReportInterval {
 		t.Fatalf("ProgressInterval = %v, want %v", scheduler.ProgressInterval, cfg.ProgressReportInterval)
 	}
-	if scheduler.TotalWorkers() != cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers {
+	if scheduler.TotalWorkers() != cfg.GenericWorkers+cfg.BillingWorkers+cfg.FailureProbeWorkers {
 		t.Fatalf(
 			"TotalWorkers() = %d, want %d",
 			scheduler.TotalWorkers(),
-			cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers,
+			cfg.GenericWorkers+cfg.BillingWorkers+cfg.FailureProbeWorkers,
 		)
 	}
 
 	workers := scheduler.Workers()
-	if len(workers) != cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers {
+	if len(workers) != cfg.GenericWorkers+cfg.BillingWorkers+cfg.FailureProbeWorkers {
 		t.Fatalf(
 			"len(Workers()) = %d, want %d",
 			len(workers),
-			cfg.GenericWorkers+cfg.PropertyMeWorkers+cfg.FailureProbeWorkers,
+			cfg.GenericWorkers+cfg.BillingWorkers+cfg.FailureProbeWorkers,
 		)
 	}
 
@@ -38,9 +38,9 @@ func TestNewSchedulerBuildsFixedWorkerGroups(t *testing.T) {
 		scenario.GenericGroup,
 		scenario.GenericGroup,
 		scenario.GenericGroup,
-		scenario.PropertyMeGroup,
-		scenario.PropertyMeGroup,
-		scenario.PropertyMeGroup,
+		scenario.BillingGroup,
+		scenario.BillingGroup,
+		scenario.BillingGroup,
 		scenario.FailureProbeGroup,
 	}
 	for i, want := range wantGroups {
@@ -56,7 +56,7 @@ func TestNewSchedulerBuildsFixedWorkerGroups(t *testing.T) {
 func TestNewSchedulerPreservesConfiguredCounts(t *testing.T) {
 	cfg := config.Default()
 	cfg.GenericWorkers = 2
-	cfg.PropertyMeWorkers = 1
+	cfg.BillingWorkers = 1
 	cfg.FailureProbeWorkers = 1
 	cfg.ProgressReportInterval = 15 * time.Second
 
@@ -65,8 +65,8 @@ func TestNewSchedulerPreservesConfiguredCounts(t *testing.T) {
 	if scheduler.GenericWorkers != 2 {
 		t.Fatalf("GenericWorkers = %d, want 2", scheduler.GenericWorkers)
 	}
-	if scheduler.PropertyMeWorkers != 1 {
-		t.Fatalf("PropertyMeWorkers = %d, want 1", scheduler.PropertyMeWorkers)
+	if scheduler.BillingWorkers != 1 {
+		t.Fatalf("BillingWorkers = %d, want 1", scheduler.BillingWorkers)
 	}
 	if scheduler.FailureProbeWorkers != 1 {
 		t.Fatalf("FailureProbeWorkers = %d, want 1", scheduler.FailureProbeWorkers)

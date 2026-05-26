@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/model"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/model"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 func TestCheckerIncludesOrphanChildQuery(t *testing.T) {
@@ -58,6 +58,36 @@ func TestRunBuildsSummaryOrientedOutcomes(t *testing.T) {
 		t.Fatalf("Runtime.Executed = %d, want %d", got, want)
 	}
 	wantRuntimeScenarios := []report.ScenarioSummary{
+		{
+			Name:            "billing_cascade_path",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
+		{
+			Name:            "billing_fk_backfill",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
+		{
+			Name:            "billing_folio_balance_update",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
+		{
+			Name:            "billing_journal_posting_bill",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
+		{
+			Name:            "billing_payment_mixed_references",
+			Executed:        0,
+			Success:         0,
+			ExpectedFailure: 0,
+		},
 		{
 			Name:            "generic_concurrent_hot_parent_insert",
 			Executed:        0,
@@ -108,36 +138,6 @@ func TestRunBuildsSummaryOrientedOutcomes(t *testing.T) {
 			UnexpectedFailure: 0,
 			LastErrorAt:       time.Date(2026, time.May, 25, 10, 0, 0, 0, time.UTC),
 			LastErrorText:     "upgrading a shared lock to an exclusive lock is not supported",
-		},
-		{
-			Name:            "pm_cascade_path",
-			Executed:        0,
-			Success:         0,
-			ExpectedFailure: 0,
-		},
-		{
-			Name:            "pm_fk_backfill",
-			Executed:        0,
-			Success:         0,
-			ExpectedFailure: 0,
-		},
-		{
-			Name:            "pm_folio_balance_update",
-			Executed:        0,
-			Success:         0,
-			ExpectedFailure: 0,
-		},
-		{
-			Name:            "pm_journal_posting_bill",
-			Executed:        0,
-			Success:         0,
-			ExpectedFailure: 0,
-		},
-		{
-			Name:            "pm_payment_mixed_references",
-			Executed:        0,
-			Success:         0,
-			ExpectedFailure: 0,
 		},
 		{
 			Name:            "statement_folio_parent_update_probe",

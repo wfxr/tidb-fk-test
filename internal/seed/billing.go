@@ -1,8 +1,8 @@
 package seed
 
-import "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+import "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 
-const propertyMeFixturePoolSize = 4
+const billingFixturePoolSize = 4
 
 const (
 	createCustomerTableStatement     = "CREATE TABLE IF NOT EXISTS customer (id BIGINT PRIMARY KEY, status VARCHAR(32) NOT NULL)"
@@ -71,7 +71,7 @@ type StatementFolioParentUpdateProbeSlot struct {
 	StatementID int64
 }
 
-type PropertyMeSeedPlan struct {
+type BillingSeedPlan struct {
 	CustomerIDs []int64
 	FolioIDs    []int64
 
@@ -89,10 +89,10 @@ type PropertyMeSeedPlan struct {
 	StatementFolioParentUpdateProbeSlots []StatementFolioParentUpdateProbeSlot
 }
 
-func PropertyMePlan(cfg config.Config) PropertyMeSeedPlan {
+func BillingPlan(cfg config.Config) BillingSeedPlan {
 	customerCount := max(cfg.SeedParentRowsPerTable, 0)
 	if customerCount == 0 {
-		return PropertyMeSeedPlan{}
+		return BillingSeedPlan{}
 	}
 
 	customerIDs := make([]int64, 0, customerCount)
@@ -102,7 +102,7 @@ func PropertyMePlan(cfg config.Config) PropertyMeSeedPlan {
 		folioIDs = append(folioIDs, int64(1001+i))
 	}
 
-	plan := PropertyMeSeedPlan{
+	plan := BillingSeedPlan{
 		CustomerIDs:        customerIDs,
 		FolioIDs:           folioIDs,
 		ExistingCustomerID: customerIDs[0],
@@ -138,7 +138,7 @@ func PropertyMePlan(cfg config.Config) PropertyMeSeedPlan {
 	return plan
 }
 
-func propertyMeSchemaStatements() []applyStatement {
+func billingSchemaStatements() []applyStatement {
 	return []applyStatement{
 		{query: createCustomerTableStatement},
 		{query: createFolioTableStatement},
@@ -153,14 +153,14 @@ func propertyMeSchemaStatements() []applyStatement {
 	}
 }
 
-func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
+func billingFixtureStatements(plan BillingSeedPlan) []applyStatement {
 	var statements []applyStatement
 
 	if stmt, ok := newInsertStatement(
 		"customer",
 		[]string{"id", "status"},
 		[]string{"status"},
-		propertyMeCustomerRows(plan),
+		billingCustomerRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -169,7 +169,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"folio",
 		[]string{"id", "customer_id", "last_statement_id"},
 		[]string{"customer_id", "last_statement_id"},
-		propertyMeFolioRows(plan),
+		billingFolioRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -178,7 +178,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"journal",
 		[]string{"id", "customer_id", "folio_id", "member_id", "reference", "amount_cents"},
 		[]string{"customer_id", "folio_id", "member_id", "reference", "amount_cents"},
-		propertyMeJournalRows(plan),
+		billingJournalRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -187,7 +187,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"posting",
 		[]string{"id", "journal_id", "status", "amount_cents"},
 		[]string{"journal_id", "status", "amount_cents"},
-		propertyMePostingRows(plan),
+		billingPostingRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -196,7 +196,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"bill",
 		[]string{"id", "journal_id", "folio_id", "status", "total_cents", "paid_cents", "version"},
 		[]string{"journal_id", "folio_id", "status", "total_cents", "paid_cents", "version"},
-		propertyMeBillRows(plan),
+		billingBillRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -205,7 +205,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"payment",
 		[]string{"id", "bill_id", "journal_id", "status", "amount_cents"},
 		[]string{"bill_id", "journal_id", "status", "amount_cents"},
-		propertyMePaymentRows(plan),
+		billingPaymentRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -214,7 +214,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"foliobalance",
 		[]string{"id", "customer_id", "folio_id", "balance_cents"},
 		[]string{"customer_id", "folio_id", "balance_cents"},
-		propertyMeFolioBalanceRows(plan),
+		billingFolioBalanceRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -223,7 +223,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"feelog",
 		[]string{"id", "journal_id", "fee_bill_id", "amount_cents"},
 		[]string{"journal_id", "fee_bill_id", "amount_cents"},
-		propertyMeFeeLogRows(plan),
+		billingFeeLogRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -232,7 +232,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"statement",
 		[]string{"id", "customer_id", "folio_id", "status", "balance_cents"},
 		[]string{"customer_id", "folio_id", "status", "balance_cents"},
-		propertyMeStatementRows(plan),
+		billingStatementRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -241,7 +241,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 		"withdrawal",
 		[]string{"id", "journal_id", "statement_id", "status", "amount_cents"},
 		[]string{"journal_id", "statement_id", "status", "amount_cents"},
-		propertyMeWithdrawalRows(plan),
+		billingWithdrawalRows(plan),
 	); ok {
 		statements = append(statements, stmt)
 	}
@@ -249,7 +249,7 @@ func propertyMeFixtureStatements(plan PropertyMeSeedPlan) []applyStatement {
 	return statements
 }
 
-func propertyMeCustomerRows(plan PropertyMeSeedPlan) [][]any {
+func billingCustomerRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.CustomerIDs))
 	for _, customerID := range plan.CustomerIDs {
 		rows = append(rows, []any{customerID, "active"})
@@ -257,7 +257,7 @@ func propertyMeCustomerRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeFolioRows(plan PropertyMeSeedPlan) [][]any {
+func billingFolioRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.FolioIDs))
 	for index, folioID := range plan.FolioIDs {
 		rows = append(rows, []any{folioID, plan.CustomerIDs[index], nil})
@@ -265,7 +265,7 @@ func propertyMeFolioRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeJournalRows(plan PropertyMeSeedPlan) [][]any {
+func billingJournalRows(plan BillingSeedPlan) [][]any {
 	if len(plan.CustomerIDs) == 0 {
 		return nil
 	}
@@ -291,7 +291,7 @@ func propertyMeJournalRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMePostingRows(plan PropertyMeSeedPlan) [][]any {
+func billingPostingRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.JournalPostingBillSlots))
 	for _, slot := range plan.JournalPostingBillSlots {
 		rows = append(rows, []any{slot.PostingID, slot.JournalID, "posted", int64(1500)})
@@ -299,7 +299,7 @@ func propertyMePostingRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeBillRows(plan PropertyMeSeedPlan) [][]any {
+func billingBillRows(plan BillingSeedPlan) [][]any {
 	if len(plan.CustomerIDs) == 0 {
 		return nil
 	}
@@ -323,7 +323,7 @@ func propertyMeBillRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMePaymentRows(plan PropertyMeSeedPlan) [][]any {
+func billingPaymentRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.PaymentMixedReferenceSlots)+len(plan.PaymentBillUpdateProbeSlots))
 	for _, slot := range plan.PaymentMixedReferenceSlots {
 		rows = append(rows, []any{slot.PaymentID, slot.BillID, slot.JournalID, "applied", int64(875)})
@@ -334,7 +334,7 @@ func propertyMePaymentRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeFolioBalanceRows(plan PropertyMeSeedPlan) [][]any {
+func billingFolioBalanceRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.FolioBalanceUpdateSlots))
 	for _, slot := range plan.FolioBalanceUpdateSlots {
 		rows = append(rows, []any{slot.FolioBalanceID, slot.CustomerID, slot.FolioID, int64(0)})
@@ -342,7 +342,7 @@ func propertyMeFolioBalanceRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeFeeLogRows(plan PropertyMeSeedPlan) [][]any {
+func billingFeeLogRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.FKBackfillSlots))
 	for _, slot := range plan.FKBackfillSlots {
 		rows = append(rows, []any{slot.FeeLogID, slot.JournalID, slot.BillID, int64(225)})
@@ -350,7 +350,7 @@ func propertyMeFeeLogRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeStatementRows(plan PropertyMeSeedPlan) [][]any {
+func billingStatementRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.FKBackfillSlots)+len(plan.CascadePathSlots))
 	for _, slot := range plan.FKBackfillSlots {
 		rows = append(rows, []any{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)})
@@ -361,7 +361,7 @@ func propertyMeStatementRows(plan PropertyMeSeedPlan) [][]any {
 	return rows
 }
 
-func propertyMeWithdrawalRows(plan PropertyMeSeedPlan) [][]any {
+func billingWithdrawalRows(plan BillingSeedPlan) [][]any {
 	rows := make([][]any, 0, len(plan.FKBackfillSlots)+len(plan.CascadePathSlots))
 	for _, slot := range plan.FKBackfillSlots {
 		rows = append(rows, []any{slot.WithdrawalID, slot.JournalID, slot.StatementID, "pending", int64(300)})
@@ -376,8 +376,8 @@ func buildJournalPostingBillSlots(
 	customerIDs, folioIDs []int64,
 	firstJournalID, firstPostingID, firstBillID int64,
 ) []JournalPostingBillSlot {
-	slots := make([]JournalPostingBillSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]JournalPostingBillSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, JournalPostingBillSlot{
 			CustomerID: customerIDs[i%len(customerIDs)],
 			FolioID:    folioIDs[i%len(folioIDs)],
@@ -390,8 +390,8 @@ func buildJournalPostingBillSlots(
 }
 
 func buildFolioBalanceUpdateSlots(customerIDs, folioIDs []int64, firstBalanceID int64) []FolioBalanceUpdateSlot {
-	slots := make([]FolioBalanceUpdateSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]FolioBalanceUpdateSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, FolioBalanceUpdateSlot{
 			CustomerID:     customerIDs[i%len(customerIDs)],
 			FolioID:        folioIDs[i%len(folioIDs)],
@@ -405,8 +405,8 @@ func buildFKBackfillSlots(
 	customerIDs, folioIDs []int64,
 	firstJournalID, firstBillID, firstFeeLogID, firstStatementID, firstWithdrawalID int64,
 ) []FKBackfillSlot {
-	slots := make([]FKBackfillSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]FKBackfillSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, FKBackfillSlot{
 			CustomerID:   customerIDs[i%len(customerIDs)],
 			FolioID:      folioIDs[i%len(folioIDs)],
@@ -424,8 +424,8 @@ func buildPaymentMixedReferenceSlots(
 	customerIDs, folioIDs []int64,
 	billID, firstJournalID, firstPaymentID int64,
 ) []PaymentMixedReferenceSlot {
-	slots := make([]PaymentMixedReferenceSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]PaymentMixedReferenceSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, PaymentMixedReferenceSlot{
 			CustomerID: customerIDs[i%len(customerIDs)],
 			FolioID:    folioIDs[i%len(folioIDs)],
@@ -441,8 +441,8 @@ func buildCascadePathSlots(
 	customerIDs, folioIDs []int64,
 	journalID, firstStatementID, firstWithdrawalID int64,
 ) []CascadePathSlot {
-	slots := make([]CascadePathSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]CascadePathSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, CascadePathSlot{
 			CustomerID:   customerIDs[i%len(customerIDs)],
 			FolioID:      folioIDs[i%len(folioIDs)],
@@ -458,8 +458,8 @@ func buildPaymentBillUpdateProbeSlots(
 	customerIDs, folioIDs []int64,
 	billID, journalID, firstPaymentID int64,
 ) []PaymentBillUpdateProbeSlot {
-	slots := make([]PaymentBillUpdateProbeSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]PaymentBillUpdateProbeSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, PaymentBillUpdateProbeSlot{
 			CustomerID: customerIDs[i%len(customerIDs)],
 			FolioID:    folioIDs[i%len(folioIDs)],
@@ -475,8 +475,8 @@ func buildStatementFolioParentUpdateProbeSlots(
 	customerIDs, folioIDs []int64,
 	firstStatementID int64,
 ) []StatementFolioParentUpdateProbeSlot {
-	slots := make([]StatementFolioParentUpdateProbeSlot, 0, propertyMeFixturePoolSize)
-	for i := 0; i < propertyMeFixturePoolSize; i++ {
+	slots := make([]StatementFolioParentUpdateProbeSlot, 0, billingFixturePoolSize)
+	for i := 0; i < billingFixturePoolSize; i++ {
 		slots = append(slots, StatementFolioParentUpdateProbeSlot{
 			CustomerID:  customerIDs[i%len(customerIDs)],
 			FolioID:     folioIDs[i%len(folioIDs)],

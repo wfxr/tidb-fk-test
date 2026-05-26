@@ -4,11 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 )
 
-func TestPropertyMePlanUsesDeterministicCoreIDsAndFixtures(t *testing.T) {
-	plan := PropertyMePlan(config.Config{
+func TestBillingPlanUsesDeterministicCoreIDsAndFixtures(t *testing.T) {
+	plan := BillingPlan(config.Config{
 		SeedParentRowsPerTable: 3,
 	})
 
@@ -67,36 +67,36 @@ func TestPropertyMePlanUsesDeterministicCoreIDsAndFixtures(t *testing.T) {
 	}
 }
 
-func TestPropertyMePlanBuildsFixturePoolsForCustomerScenarios(t *testing.T) {
-	plan := PropertyMePlan(config.Config{
+func TestBillingPlanBuildsFixturePoolsForCustomerScenarios(t *testing.T) {
+	plan := BillingPlan(config.Config{
 		SeedParentRowsPerTable: 2,
 	})
 
-	if got, want := len(plan.JournalPostingBillSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.JournalPostingBillSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(JournalPostingBillSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.FolioBalanceUpdateSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.FolioBalanceUpdateSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(FolioBalanceUpdateSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.FKBackfillSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.FKBackfillSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(FKBackfillSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.PaymentMixedReferenceSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.PaymentMixedReferenceSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(PaymentMixedReferenceSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.CascadePathSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.CascadePathSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(CascadePathSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.PaymentBillUpdateProbeSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.PaymentBillUpdateProbeSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(PaymentBillUpdateProbeSlots) = %d, want %d", got, want)
 	}
-	if got, want := len(plan.StatementFolioParentUpdateProbeSlots), propertyMeFixturePoolSize; got != want {
+	if got, want := len(plan.StatementFolioParentUpdateProbeSlots), billingFixturePoolSize; got != want {
 		t.Fatalf("len(StatementFolioParentUpdateProbeSlots) = %d, want %d", got, want)
 	}
 }
 
-func TestPropertyMePlanDoesNotFabricateFixturesWithoutCustomers(t *testing.T) {
-	plan := PropertyMePlan(config.Config{
+func TestBillingPlanDoesNotFabricateFixturesWithoutCustomers(t *testing.T) {
+	plan := BillingPlan(config.Config{
 		SeedParentRowsPerTable: 0,
 	})
 

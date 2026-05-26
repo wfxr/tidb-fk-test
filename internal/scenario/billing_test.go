@@ -8,28 +8,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
-var _ Scenario = NewPMJournalPostingBill()
-var _ Scenario = NewPMFolioBalanceUpdate()
-var _ Scenario = NewPMFKBackfill()
-var _ Scenario = NewPMPaymentMixedReferences()
-var _ Scenario = NewPMCascadePath()
+var _ Scenario = NewBillingJournalPostingBill()
+var _ Scenario = NewBillingFolioBalanceUpdate()
+var _ Scenario = NewBillingFKBackfill()
+var _ Scenario = NewBillingPaymentMixedReferences()
+var _ Scenario = NewBillingCascadePath()
 
-type propertyMeCall struct {
+type billingCall struct {
 	method string
 	query  string
 	args   []any
 }
 
-type recordingPropertyMeRow struct {
+type recordingBillingRow struct {
 	scanCalls int
 	err       error
 }
 
-func (r *recordingPropertyMeRow) Scan(dest ...any) error {
+func (r *recordingBillingRow) Scan(dest ...any) error {
 	r.scanCalls++
 	if r.err != nil {
 		return r.err
@@ -43,14 +43,14 @@ func (r *recordingPropertyMeRow) Scan(dest ...any) error {
 	return nil
 }
 
-type recordingPropertyMeSession struct {
-	calls        []propertyMeCall
+type recordingBillingSession struct {
+	calls        []billingCall
 	queryRowErr  error
-	lastQueryRow *recordingPropertyMeRow
+	lastQueryRow *recordingBillingRow
 }
 
-func (s *recordingPropertyMeSession) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
-	s.calls = append(s.calls, propertyMeCall{
+func (s *recordingBillingSession) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
+	s.calls = append(s.calls, billingCall{
 		method: "exec",
 		query:  query,
 		args:   append([]any(nil), args...),
@@ -58,26 +58,26 @@ func (s *recordingPropertyMeSession) ExecContext(_ context.Context, query string
 	return nil, nil
 }
 
-func (s *recordingPropertyMeSession) QueryRowContext(_ context.Context, query string, args ...any) db.RowScanner {
-	s.calls = append(s.calls, propertyMeCall{
+func (s *recordingBillingSession) QueryRowContext(_ context.Context, query string, args ...any) db.RowScanner {
+	s.calls = append(s.calls, billingCall{
 		method: "query",
 		query:  query,
 		args:   append([]any(nil), args...),
 	})
-	s.lastQueryRow = &recordingPropertyMeRow{err: s.queryRowErr}
+	s.lastQueryRow = &recordingBillingRow{err: s.queryRowErr}
 	return s.lastQueryRow
 }
 
-func TestPropertyMeScenarioMetadata(t *testing.T) {
+func TestBillingScenarioMetadata(t *testing.T) {
 	tests := []struct {
 		name string
 		got  Scenario
 	}{
-		{name: "pm_journal_posting_bill", got: NewPMJournalPostingBill()},
-		{name: "pm_folio_balance_update", got: NewPMFolioBalanceUpdate()},
-		{name: "pm_fk_backfill", got: NewPMFKBackfill()},
-		{name: "pm_payment_mixed_references", got: NewPMPaymentMixedReferences()},
-		{name: "pm_cascade_path", got: NewPMCascadePath()},
+		{name: "billing_journal_posting_bill", got: NewBillingJournalPostingBill()},
+		{name: "billing_folio_balance_update", got: NewBillingFolioBalanceUpdate()},
+		{name: "billing_fk_backfill", got: NewBillingFKBackfill()},
+		{name: "billing_payment_mixed_references", got: NewBillingPaymentMixedReferences()},
+		{name: "billing_cascade_path", got: NewBillingCascadePath()},
 	}
 
 	for _, tt := range tests {
@@ -85,18 +85,18 @@ func TestPropertyMeScenarioMetadata(t *testing.T) {
 		if meta.Name != tt.name {
 			t.Fatalf("%T Meta().Name = %q, want %q", tt.got, meta.Name, tt.name)
 		}
-		if meta.Group != PropertyMeGroup {
-			t.Fatalf("%s Meta().Group = %q, want %q", tt.name, meta.Group, PropertyMeGroup)
+		if meta.Group != BillingGroup {
+			t.Fatalf("%s Meta().Group = %q, want %q", tt.name, meta.Group, BillingGroup)
 		}
 	}
 }
 
-func TestPMJournalPostingBillOrder(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.JournalPostingBillSlots[0]
+func TestBillingJournalPostingBillOrder(t *testing.T) {
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.JournalPostingBillSlots[0]
 
-	err := NewPMJournalPostingBill().Run(context.Background(), sess, seedState)
+	err := NewBillingJournalPostingBill().Run(context.Background(), sess, seedState)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -109,7 +109,7 @@ func TestPMJournalPostingBillOrder(t *testing.T) {
 		"INSERT INTO posting (id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?)",
 		"INSERT INTO bill (id, journal_id, folio_id, status, total_cents, paid_cents) VALUES (?, ?, ?, ?, ?, ?)",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
@@ -117,27 +117,27 @@ func TestPMJournalPostingBillOrder(t *testing.T) {
 		{slot.BillID},
 		{slot.PostingID},
 		{slot.JournalID},
-		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-journal", int64(1500)},
+		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "billing-journal", int64(1500)},
 		{slot.PostingID, slot.JournalID, "posted", int64(1500)},
 		{slot.BillID, slot.JournalID, slot.FolioID, "open", int64(1500), int64(0)},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }
 
-func TestPMFolioBalanceUpdateUsesForUpdateThenUpdate(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.FolioBalanceUpdateSlots[0]
+func TestBillingFolioBalanceUpdateUsesForUpdateThenUpdate(t *testing.T) {
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.FolioBalanceUpdateSlots[0]
 
-	err := NewPMFolioBalanceUpdate().Run(context.Background(), sess, seedState)
+	err := NewBillingFolioBalanceUpdate().Run(context.Background(), sess, seedState)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
 	wantMethods := []string{"query", "exec"}
-	if got := propertyMeMethods(sess.calls); !reflect.DeepEqual(got, wantMethods) {
+	if got := billingMethods(sess.calls); !reflect.DeepEqual(got, wantMethods) {
 		t.Fatalf("methods = %v, want %v", got, wantMethods)
 	}
 
@@ -145,7 +145,7 @@ func TestPMFolioBalanceUpdateUsesForUpdateThenUpdate(t *testing.T) {
 		"SELECT id FROM foliobalance WHERE id = ? FOR UPDATE",
 		"UPDATE foliobalance SET balance_cents = balance_cents + ?, updated_count = updated_count + 1 WHERE id = ?",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
@@ -153,7 +153,7 @@ func TestPMFolioBalanceUpdateUsesForUpdateThenUpdate(t *testing.T) {
 		{slot.FolioBalanceID},
 		{int64(250), slot.FolioBalanceID},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 	if sess.lastQueryRow == nil {
@@ -164,11 +164,11 @@ func TestPMFolioBalanceUpdateUsesForUpdateThenUpdate(t *testing.T) {
 	}
 }
 
-func TestPMFolioBalanceUpdatePropagatesForUpdateScanFailure(t *testing.T) {
+func TestBillingFolioBalanceUpdatePropagatesForUpdateScanFailure(t *testing.T) {
 	wantErr := errors.New("for update lock failed")
-	sess := &recordingPropertyMeSession{queryRowErr: wantErr}
+	sess := &recordingBillingSession{queryRowErr: wantErr}
 
-	err := NewPMFolioBalanceUpdate().Run(context.Background(), sess, testPropertyMeSeedState())
+	err := NewBillingFolioBalanceUpdate().Run(context.Background(), sess, testBillingSeedState())
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want %v", err, wantErr)
 	}
@@ -176,17 +176,17 @@ func TestPMFolioBalanceUpdatePropagatesForUpdateScanFailure(t *testing.T) {
 	wantQueries := []string{
 		"SELECT id FROM foliobalance WHERE id = ? FOR UPDATE",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 }
 
-func TestPMFKBackfillOrder(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.FKBackfillSlots[0]
+func TestBillingFKBackfillOrder(t *testing.T) {
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.FKBackfillSlots[0]
 
-	err := NewPMFKBackfill().Run(context.Background(), sess, seedState)
+	err := NewBillingFKBackfill().Run(context.Background(), sess, seedState)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -203,7 +203,7 @@ func TestPMFKBackfillOrder(t *testing.T) {
 		"INSERT INTO statement (id, customer_id, folio_id, status, balance_cents) VALUES (?, ?, ?, ?, ?)",
 		"UPDATE withdrawal SET statement_id = ? WHERE id = ?",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
@@ -219,17 +219,17 @@ func TestPMFKBackfillOrder(t *testing.T) {
 		{slot.StatementID, slot.CustomerID, slot.FolioID, "issued", int64(525)},
 		{slot.StatementID, slot.WithdrawalID},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }
 
-func TestPMPaymentMixedReferencesOrder(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.PaymentMixedReferenceSlots[0]
+func TestBillingPaymentMixedReferencesOrder(t *testing.T) {
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.PaymentMixedReferenceSlots[0]
 
-	err := NewPMPaymentMixedReferences().Run(context.Background(), sess, seedState)
+	err := NewBillingPaymentMixedReferences().Run(context.Background(), sess, seedState)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -240,27 +240,27 @@ func TestPMPaymentMixedReferencesOrder(t *testing.T) {
 		"INSERT INTO journal (id, customer_id, folio_id, member_id, reference, amount_cents) VALUES (?, ?, ?, ?, ?, ?)",
 		"INSERT INTO payment (id, bill_id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?, ?)",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
 	wantArgs := [][]any{
 		{slot.PaymentID},
 		{slot.JournalID},
-		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-payment", int64(875)},
+		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "billing-payment", int64(875)},
 		{slot.PaymentID, slot.BillID, slot.JournalID, "applied", int64(875)},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }
 
-func TestPMCascadePathOrder(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.CascadePathSlots[0]
+func TestBillingCascadePathOrder(t *testing.T) {
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.CascadePathSlots[0]
 
-	err := NewPMCascadePath().Run(context.Background(), sess, seedState)
+	err := NewBillingCascadePath().Run(context.Background(), sess, seedState)
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -272,7 +272,7 @@ func TestPMCascadePathOrder(t *testing.T) {
 		"INSERT INTO withdrawal (id, journal_id, statement_id, status, amount_cents) VALUES (?, ?, ?, ?, ?)",
 		"DELETE FROM statement WHERE id = ?",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
@@ -283,27 +283,27 @@ func TestPMCascadePathOrder(t *testing.T) {
 		{slot.WithdrawalID, slot.JournalID, slot.StatementID, "pending", int64(640)},
 		{slot.StatementID},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }
 
-func TestPropertyMeScenarioRequiresRuntimeSeedPlan(t *testing.T) {
-	sess := &recordingPropertyMeSession{}
+func TestBillingScenarioRequiresRuntimeSeedPlan(t *testing.T) {
+	sess := &recordingBillingSession{}
 
-	err := NewPMJournalPostingBill().Run(context.Background(), sess, SeedState{})
+	err := NewBillingJournalPostingBill().Run(context.Background(), sess, SeedState{})
 	if err == nil {
-		t.Fatal("Run() error = nil, want missing propertyme seed plan error")
+		t.Fatal("Run() error = nil, want missing billing seed plan error")
 	}
-	if !strings.Contains(err.Error(), "propertyme seed plan required") {
-		t.Fatalf("Run() error = %v, want missing propertyme seed plan error", err)
+	if !strings.Contains(err.Error(), "billing seed plan required") {
+		t.Fatalf("Run() error = %v, want missing billing seed plan error", err)
 	}
 	if got := len(sess.calls); got != 0 {
 		t.Fatalf("len(calls) = %d, want 0", got)
 	}
 }
 
-func propertyMeMethods(calls []propertyMeCall) []string {
+func billingMethods(calls []billingCall) []string {
 	methods := make([]string, 0, len(calls))
 	for _, call := range calls {
 		methods = append(methods, call.method)
@@ -311,7 +311,7 @@ func propertyMeMethods(calls []propertyMeCall) []string {
 	return methods
 }
 
-func propertyMeQueries(calls []propertyMeCall) []string {
+func billingQueries(calls []billingCall) []string {
 	queries := make([]string, 0, len(calls))
 	for _, call := range calls {
 		queries = append(queries, call.query)
@@ -319,7 +319,7 @@ func propertyMeQueries(calls []propertyMeCall) []string {
 	return queries
 }
 
-func propertyMeArgs(calls []propertyMeCall) [][]any {
+func billingArgs(calls []billingCall) [][]any {
 	args := make([][]any, 0, len(calls))
 	for _, call := range calls {
 		args = append(args, call.args)
@@ -327,9 +327,9 @@ func propertyMeArgs(calls []propertyMeCall) [][]any {
 	return args
 }
 
-func testPropertyMeSeedState() SeedState {
+func testBillingSeedState() SeedState {
 	return SeedState{
-		PropertyMe: seed.PropertyMeSeedPlan{
+		Billing: seed.BillingSeedPlan{
 			CustomerIDs: []int64{1, 2},
 			FolioIDs:    []int64{1001, 1002},
 

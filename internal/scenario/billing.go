@@ -5,29 +5,29 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
-type propertyMeStep struct {
+type billingStep struct {
 	query    string
 	args     []any
 	queryRow bool
 }
 
-type propertyMeExecScenario struct {
+type billingExecScenario struct {
 	meta       Metadata
 	runCounter atomic.Uint64
-	buildSteps func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error)
+	buildSteps func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error)
 }
 
-func NewPMJournalPostingBill() Scenario {
-	return newPropertyMeExecScenario(
-		"pm_journal_posting_bill",
+func NewBillingJournalPostingBill() Scenario {
+	return newBillingExecScenario(
+		"billing_journal_posting_bill",
 		2,
-		func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error) {
+		func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error) {
 			slot, err := selectPoolSlot(
-				"pm_journal_posting_bill",
+				"billing_journal_posting_bill",
 				plan.JournalPostingBillSlots,
 				run,
 				"journal/posting/bill fixture slots",
@@ -36,13 +36,13 @@ func NewPMJournalPostingBill() Scenario {
 				return nil, err
 			}
 
-			return []propertyMeStep{
+			return []billingStep{
 				{query: "DELETE FROM bill WHERE id = ?", args: []any{slot.BillID}},
 				{query: "DELETE FROM posting WHERE id = ?", args: []any{slot.PostingID}},
 				{query: "DELETE FROM journal WHERE id = ?", args: []any{slot.JournalID}},
 				{
 					query: "INSERT INTO journal (id, customer_id, folio_id, member_id, reference, amount_cents) VALUES (?, ?, ?, ?, ?, ?)",
-					args:  []any{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-journal", int64(1500)},
+					args:  []any{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "billing-journal", int64(1500)},
 				},
 				{
 					query: "INSERT INTO posting (id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?)",
@@ -57,13 +57,13 @@ func NewPMJournalPostingBill() Scenario {
 	)
 }
 
-func NewPMFolioBalanceUpdate() Scenario {
-	return newPropertyMeExecScenario(
-		"pm_folio_balance_update",
+func NewBillingFolioBalanceUpdate() Scenario {
+	return newBillingExecScenario(
+		"billing_folio_balance_update",
 		2,
-		func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error) {
+		func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error) {
 			slot, err := selectPoolSlot(
-				"pm_folio_balance_update",
+				"billing_folio_balance_update",
 				plan.FolioBalanceUpdateSlots,
 				run,
 				"folio balance fixture slots",
@@ -72,7 +72,7 @@ func NewPMFolioBalanceUpdate() Scenario {
 				return nil, err
 			}
 
-			return []propertyMeStep{
+			return []billingStep{
 				{
 					query:    "SELECT id FROM foliobalance WHERE id = ? FOR UPDATE",
 					args:     []any{slot.FolioBalanceID},
@@ -87,13 +87,13 @@ func NewPMFolioBalanceUpdate() Scenario {
 	)
 }
 
-func NewPMFKBackfill() Scenario {
-	return newPropertyMeExecScenario(
-		"pm_fk_backfill",
+func NewBillingFKBackfill() Scenario {
+	return newBillingExecScenario(
+		"billing_fk_backfill",
 		1,
-		func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error) {
+		func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error) {
 			slot, err := selectPoolSlot(
-				"pm_fk_backfill",
+				"billing_fk_backfill",
 				plan.FKBackfillSlots,
 				run,
 				"FK backfill fixture slots",
@@ -102,7 +102,7 @@ func NewPMFKBackfill() Scenario {
 				return nil, err
 			}
 
-			return []propertyMeStep{
+			return []billingStep{
 				{query: "DELETE FROM feelog WHERE id = ?", args: []any{slot.FeeLogID}},
 				{query: "DELETE FROM withdrawal WHERE id = ?", args: []any{slot.WithdrawalID}},
 				{query: "DELETE FROM bill WHERE id = ?", args: []any{slot.BillID}},
@@ -136,13 +136,13 @@ func NewPMFKBackfill() Scenario {
 	)
 }
 
-func NewPMPaymentMixedReferences() Scenario {
-	return newPropertyMeExecScenario(
-		"pm_payment_mixed_references",
+func NewBillingPaymentMixedReferences() Scenario {
+	return newBillingExecScenario(
+		"billing_payment_mixed_references",
 		2,
-		func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error) {
+		func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error) {
 			slot, err := selectPoolSlot(
-				"pm_payment_mixed_references",
+				"billing_payment_mixed_references",
 				plan.PaymentMixedReferenceSlots,
 				run,
 				"payment mixed-reference fixture slots",
@@ -151,12 +151,12 @@ func NewPMPaymentMixedReferences() Scenario {
 				return nil, err
 			}
 
-			return []propertyMeStep{
+			return []billingStep{
 				{query: "DELETE FROM payment WHERE id = ?", args: []any{slot.PaymentID}},
 				{query: "DELETE FROM journal WHERE id = ?", args: []any{slot.JournalID}},
 				{
 					query: "INSERT INTO journal (id, customer_id, folio_id, member_id, reference, amount_cents) VALUES (?, ?, ?, ?, ?, ?)",
-					args:  []any{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-payment", int64(875)},
+					args:  []any{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "billing-payment", int64(875)},
 				},
 				{
 					query: "INSERT INTO payment (id, bill_id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?, ?)",
@@ -167,13 +167,13 @@ func NewPMPaymentMixedReferences() Scenario {
 	)
 }
 
-func NewPMCascadePath() Scenario {
-	return newPropertyMeExecScenario(
-		"pm_cascade_path",
+func NewBillingCascadePath() Scenario {
+	return newBillingExecScenario(
+		"billing_cascade_path",
 		1,
-		func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error) {
+		func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error) {
 			slot, err := selectPoolSlot(
-				"pm_cascade_path",
+				"billing_cascade_path",
 				plan.CascadePathSlots,
 				run,
 				"cascade fixture slots",
@@ -182,7 +182,7 @@ func NewPMCascadePath() Scenario {
 				return nil, err
 			}
 
-			return []propertyMeStep{
+			return []billingStep{
 				{query: "DELETE FROM withdrawal WHERE id = ?", args: []any{slot.WithdrawalID}},
 				{query: "DELETE FROM statement WHERE id = ?", args: []any{slot.StatementID}},
 				{
@@ -199,15 +199,15 @@ func NewPMCascadePath() Scenario {
 	)
 }
 
-func newPropertyMeExecScenario(
+func newBillingExecScenario(
 	name string,
 	concurrencyHint int,
-	buildSteps func(plan seed.PropertyMeSeedPlan, run uint64) ([]propertyMeStep, error),
+	buildSteps func(plan seed.BillingSeedPlan, run uint64) ([]billingStep, error),
 ) Scenario {
-	return &propertyMeExecScenario{
+	return &billingExecScenario{
 		meta: Metadata{
 			Name:            name,
-			Group:           PropertyMeGroup,
+			Group:           BillingGroup,
 			Weight:          1,
 			ConcurrencyHint: concurrencyHint,
 		},
@@ -215,22 +215,22 @@ func newPropertyMeExecScenario(
 	}
 }
 
-func (s *propertyMeExecScenario) Meta() Metadata {
+func (s *billingExecScenario) Meta() Metadata {
 	return s.meta
 }
 
-func (s *propertyMeExecScenario) Run(ctx context.Context, sess db.TxSession, seedState SeedState) error {
-	if missingPropertyMeSeedPlan(seedState.PropertyMe) {
-		return fmt.Errorf("%s: propertyme seed plan required", s.meta.Name)
+func (s *billingExecScenario) Run(ctx context.Context, sess db.TxSession, seedState SeedState) error {
+	if missingBillingSeedPlan(seedState.Billing) {
+		return fmt.Errorf("%s: billing seed plan required", s.meta.Name)
 	}
 
 	run := s.runCounter.Add(1) - 1
-	steps, err := s.buildSteps(seedState.PropertyMe, run)
+	steps, err := s.buildSteps(seedState.Billing, run)
 	if err != nil {
 		return err
 	}
 
-	for _, step := range clonePropertyMeSteps(steps) {
+	for _, step := range cloneBillingSteps(steps) {
 		if step.queryRow {
 			var lockedID int64
 			if err := sess.QueryRowContext(ctx, step.query, step.args...).Scan(&lockedID); err != nil {
@@ -245,10 +245,10 @@ func (s *propertyMeExecScenario) Run(ctx context.Context, sess db.TxSession, see
 	return nil
 }
 
-func clonePropertyMeSteps(steps []propertyMeStep) []propertyMeStep {
-	cloned := make([]propertyMeStep, 0, len(steps))
+func cloneBillingSteps(steps []billingStep) []billingStep {
+	cloned := make([]billingStep, 0, len(steps))
 	for _, step := range steps {
-		cloned = append(cloned, propertyMeStep{
+		cloned = append(cloned, billingStep{
 			query:    step.query,
 			args:     append([]any(nil), step.args...),
 			queryRow: step.queryRow,
@@ -257,7 +257,7 @@ func clonePropertyMeSteps(steps []propertyMeStep) []propertyMeStep {
 	return cloned
 }
 
-func missingPropertyMeSeedPlan(plan seed.PropertyMeSeedPlan) bool {
+func missingBillingSeedPlan(plan seed.BillingSeedPlan) bool {
 	return len(plan.CustomerIDs) == 0 &&
 		len(plan.FolioIDs) == 0 &&
 		len(plan.JournalPostingBillSlots) == 0 &&

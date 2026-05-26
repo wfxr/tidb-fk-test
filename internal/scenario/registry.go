@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
 )
 
 const sharedLockUpgradeExpectedError = "upgrading a shared lock to an exclusive lock is not supported"
@@ -25,11 +25,11 @@ func NewRegistry() *Registry {
 	r.add(NewGenericConcurrentHotParentInsert())
 	r.add(NewPaymentBillUpdateProbe())
 	r.add(NewStatementFolioParentUpdateProbe())
-	r.add(NewPMJournalPostingBill())
-	r.add(NewPMFolioBalanceUpdate())
-	r.add(NewPMFKBackfill())
-	r.add(NewPMPaymentMixedReferences())
-	r.add(NewPMCascadePath())
+	r.add(NewBillingJournalPostingBill())
+	r.add(NewBillingFolioBalanceUpdate())
+	r.add(NewBillingFKBackfill())
+	r.add(NewBillingPaymentMixedReferences())
+	r.add(NewBillingCascadePath())
 
 	return r
 }
@@ -75,11 +75,11 @@ func genericPlaceholder(name string) Scenario {
 	}
 }
 
-func propertyMePlaceholder(name string) Scenario {
+func billingPlaceholder(name string) Scenario {
 	return &placeholderScenario{
 		meta: Metadata{
 			Name:            name,
-			Group:           PropertyMeGroup,
+			Group:           BillingGroup,
 			Weight:          1,
 			ConcurrencyHint: 1,
 		},

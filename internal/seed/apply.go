@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 )
 
 const (
-	phaseApplyGenericSchema     = "apply_generic_schema"
-	phaseApplyPropertyMeSchema  = "apply_propertyme_schema"
-	phaseSeedGenericFixtures    = "seed_generic_fixtures"
-	phaseSeedPropertyMeFixtures = "seed_propertyme_fixtures"
+	phaseApplyGenericSchema  = "apply_generic_schema"
+	phaseApplyBillingSchema  = "apply_billing_schema"
+	phaseSeedGenericFixtures = "seed_generic_fixtures"
+	phaseSeedBillingFixtures = "seed_billing_fixtures"
 )
 
 type execer interface {
@@ -23,7 +23,7 @@ type execer interface {
 
 type AppliedState struct {
 	Generic         GenericSeedPlan
-	PropertyMe      PropertyMeSeedPlan
+	Billing         BillingSeedPlan
 	CompletedPhases []string
 }
 
@@ -66,8 +66,8 @@ func ApplyAll(ctx context.Context, db execer, cfg config.Config) (AppliedState, 
 
 func BuildAppliedState(cfg config.Config) AppliedState {
 	return AppliedState{
-		Generic:    GenericPlan(cfg),
-		PropertyMe: PropertyMePlan(cfg),
+		Generic: GenericPlan(cfg),
+		Billing: BillingPlan(cfg),
 	}
 }
 
@@ -84,16 +84,16 @@ func buildApplyPhases(applied AppliedState) []applyPhase {
 			statements: genericSchemaStatements(),
 		},
 		{
-			name:       phaseApplyPropertyMeSchema,
-			statements: propertyMeSchemaStatements(),
+			name:       phaseApplyBillingSchema,
+			statements: billingSchemaStatements(),
 		},
 		{
 			name:       phaseSeedGenericFixtures,
 			statements: genericFixtureStatements(applied.Generic),
 		},
 		{
-			name:       phaseSeedPropertyMeFixtures,
-			statements: propertyMeFixtureStatements(applied.PropertyMe),
+			name:       phaseSeedBillingFixtures,
+			statements: billingFixtureStatements(applied.Billing),
 		},
 	}
 }

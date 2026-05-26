@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
 )
 
 var _ db.Session = fakeSession{}
@@ -85,11 +85,11 @@ func TestRegistryRegistersPlannedScenarios(t *testing.T) {
 		"generic_concurrent_hot_parent_insert":       GenericGroup,
 		"payment_bill_update_probe":                  FailureProbeGroup,
 		"statement_folio_parent_update_probe":        FailureProbeGroup,
-		"pm_journal_posting_bill":                    PropertyMeGroup,
-		"pm_folio_balance_update":                    PropertyMeGroup,
-		"pm_fk_backfill":                             PropertyMeGroup,
-		"pm_payment_mixed_references":                PropertyMeGroup,
-		"pm_cascade_path":                            PropertyMeGroup,
+		"billing_journal_posting_bill":               BillingGroup,
+		"billing_folio_balance_update":               BillingGroup,
+		"billing_fk_backfill":                        BillingGroup,
+		"billing_payment_mixed_references":           BillingGroup,
+		"billing_cascade_path":                       BillingGroup,
 	}
 
 	if got := len(reg.All()); got != len(want) {
@@ -146,8 +146,8 @@ func TestRegistryFailureProbeUsesRealImplementation(t *testing.T) {
 	}
 
 	sess := &recordingTxSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.PaymentBillUpdateProbeSlots[0]
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.PaymentBillUpdateProbeSlots[0]
 
 	err := s.Run(context.Background(), sess, seedState)
 	if err != nil {
@@ -182,8 +182,8 @@ func TestRegistryStatementFolioParentUpdateProbeUsesRealImplementation(t *testin
 	}
 
 	sess := &recordingTxSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.StatementFolioParentUpdateProbeSlots[0]
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.StatementFolioParentUpdateProbeSlots[0]
 
 	err := s.Run(context.Background(), sess, seedState)
 	if err != nil {
@@ -209,17 +209,17 @@ func TestRegistryStatementFolioParentUpdateProbeUsesRealImplementation(t *testin
 	}
 }
 
-func TestRegistryPropertyMeScenarioUsesRealImplementation(t *testing.T) {
+func TestRegistryBillingScenarioUsesRealImplementation(t *testing.T) {
 	reg := NewRegistry()
 
-	s, ok := reg.Get("pm_journal_posting_bill")
+	s, ok := reg.Get("billing_journal_posting_bill")
 	if !ok {
-		t.Fatal("pm_journal_posting_bill not registered")
+		t.Fatal("billing_journal_posting_bill not registered")
 	}
 
-	sess := &recordingPropertyMeSession{}
-	seedState := testPropertyMeSeedState()
-	slot := seedState.PropertyMe.JournalPostingBillSlots[0]
+	sess := &recordingBillingSession{}
+	seedState := testBillingSeedState()
+	slot := seedState.Billing.JournalPostingBillSlots[0]
 
 	err := s.Run(context.Background(), sess, seedState)
 	if err != nil {
@@ -234,7 +234,7 @@ func TestRegistryPropertyMeScenarioUsesRealImplementation(t *testing.T) {
 		"INSERT INTO posting (id, journal_id, status, amount_cents) VALUES (?, ?, ?, ?)",
 		"INSERT INTO bill (id, journal_id, folio_id, status, total_cents, paid_cents) VALUES (?, ?, ?, ?, ?, ?)",
 	}
-	if got := propertyMeQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
+	if got := billingQueries(sess.calls); !reflect.DeepEqual(got, wantQueries) {
 		t.Fatalf("queries = %v, want %v", got, wantQueries)
 	}
 
@@ -242,11 +242,11 @@ func TestRegistryPropertyMeScenarioUsesRealImplementation(t *testing.T) {
 		{slot.BillID},
 		{slot.PostingID},
 		{slot.JournalID},
-		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "pm-journal", int64(1500)},
+		{slot.JournalID, slot.CustomerID, slot.FolioID, nil, "billing-journal", int64(1500)},
 		{slot.PostingID, slot.JournalID, "posted", int64(1500)},
 		{slot.BillID, slot.JournalID, slot.FolioID, "open", int64(1500), int64(0)},
 	}
-	if got := propertyMeArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
+	if got := billingArgs(sess.calls); !reflect.DeepEqual(got, wantArgs) {
 		t.Fatalf("args = %v, want %v", got, wantArgs)
 	}
 }

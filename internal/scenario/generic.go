@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 func NewGenericInsertExistingParent() Scenario {

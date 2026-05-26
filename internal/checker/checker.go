@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 type CheckKind string

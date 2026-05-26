@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 )
 
 func TestGenericSeedPlanUsesHotParentCount(t *testing.T) {

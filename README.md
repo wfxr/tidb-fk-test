@@ -1,7 +1,7 @@
-# FK Upgrade Workload Driver
+# tidb-fk-test
 
-This repo contains the Go implementation of a foreign-key upgrade workload
-driver for TiDB-compatible clusters.
+This repo contains the Go implementation of a foreign-key workload test tool
+for TiDB-compatible clusters.
 
 The current implementation is a two-step CLI:
 
@@ -10,11 +10,9 @@ The current implementation is a two-step CLI:
 - `run` loads that metadata, reconstructs the deterministic seed plan, runs the
   bounded workload for `--duration`, then always executes checker validation
 
-It is still a smoke-path driver, not a full rolling-upgrade controller.
-
 ## Current State
 
-- `cmd/fk-upgrade-driver` uses `cobra` with `prepare` and `run` subcommands.
+- `cmd/tidb-fk-test` uses `cobra` with `prepare` and `run` subcommands.
 - Connection flags are sysbench-like and explicit:
   `--nodes`, `--user`, `--password`, `--db`.
 - Multi-node support is first-class through `--nodes` with
@@ -23,7 +21,7 @@ It is still a smoke-path driver, not a full rolling-upgrade controller.
 - `prepare` writes deterministic seed inputs to `fk_prepare_metadata`, so
   `run` does not need seed flags.
 - The default worker layout is 8 total workers split into 4 generic, 3
-  PropertyMe, and 1 failure-probe worker.
+  Billing, and 1 failure-probe worker.
 - Whether `tidb_foreign_key_check_in_shared_lock` is enabled is now controlled
   externally by the target environment, not by the driver itself.
 - `run` emits recurring `run progress snapshot` logs every
@@ -48,14 +46,14 @@ go test ./...
 Prepare a reachable TiDB/MySQL-compatible target:
 
 ```bash
-go run ./cmd/fk-upgrade-driver prepare \
+go run ./cmd/tidb-fk-test prepare \
   --nodes 127.0.0.1:4000
 ```
 
 Then run the bounded workload and checker:
 
 ```bash
-go run ./cmd/fk-upgrade-driver run \
+go run ./cmd/tidb-fk-test run \
   --nodes 127.0.0.1:4000 \
   --duration 3s \
   --progress-report-interval 1s
@@ -64,9 +62,9 @@ go run ./cmd/fk-upgrade-driver run \
 Three-node local playground example:
 
 ```bash
-go run ./cmd/fk-upgrade-driver prepare \
+go run ./cmd/tidb-fk-test prepare \
   --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 && \
-go run ./cmd/fk-upgrade-driver run \
+go run ./cmd/tidb-fk-test run \
   --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
   --duration 3s \
   --progress-report-interval 1s
@@ -75,7 +73,7 @@ go run ./cmd/fk-upgrade-driver run \
 Expected run behavior on a reachable local playground:
 
 - the command prints `Error log: logs/error-<epoch>.log`
-- the command logs `starting fk upgrade driver`
+- the command logs `starting tidb-fk-test`
 - the log includes `initial_phase=run`
 - the command emits recurring `run progress snapshot` lines while the workload
   is still active
@@ -100,8 +98,8 @@ Notes:
 
 ## Key Files
 
-- `docs/runbooks/fk-upgrade-workload-driver.md`: operator runbook from the repo
+- `docs/runbooks/tidb-fk-test.md`: operator runbook from the repo
   root
 - `docs/runbooks/tiup-local-upgrade-scripts.md`: local TiUP cluster create and
   upgrade script runbook
-- `cmd/fk-upgrade-driver/main.go`: current CLI entrypoint
+- `cmd/tidb-fk-test/main.go`: current CLI entrypoint

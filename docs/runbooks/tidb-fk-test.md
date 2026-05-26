@@ -1,13 +1,13 @@
-# FK Upgrade Workload Driver Runbook
+# tidb-fk-test Runbook
 
 This runbook is for the current repo state. Follow it from the repo root.
 
 ## What Exists Today
 
-The current `cmd/fk-upgrade-driver` binary exposes two subcommands:
+The current `cmd/tidb-fk-test` binary exposes two subcommands:
 
 - `prepare`
-  - creates generic, PropertyMe, `probe_summary`, and `fk_prepare_metadata`
+  - creates generic, Billing, `probe_summary`, and `fk_prepare_metadata`
     tables if needed
   - seeds deterministic fixture rows
   - records the seed-plan inputs and version in `fk_prepare_metadata`
@@ -31,9 +31,8 @@ Connection defaults:
 
 The current binary still does not do these things:
 
-- control an actual rolling upgrade
-- run the planned post-upgrade execution window
 - expose extra lifecycle subcommands beyond `prepare` and `run`
+- provide a broader orchestration layer around the core FK test flow
 
 ## Defaults That Matter
 
@@ -43,7 +42,7 @@ The current binary still does not do these things:
   This is the default cadence for recurring workload progress snapshots.
 - Worker defaults:
   - `generic_workers: 4`
-  - `propertyme_workers: 3`
+  - `billing_workers: 3`
   - `failure_probe_workers: 1`
 - Seed defaults used by `prepare`:
   - `seed_parent_rows_per_table: 1000`
@@ -62,14 +61,14 @@ go test ./...
 Single-node local example:
 
 ```bash
-go run ./cmd/fk-upgrade-driver prepare \
+go run ./cmd/tidb-fk-test prepare \
   --nodes 127.0.0.1:4000
 ```
 
 Three-node local playground example:
 
 ```bash
-go run ./cmd/fk-upgrade-driver prepare \
+go run ./cmd/tidb-fk-test prepare \
   --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002
 ```
 
@@ -84,7 +83,7 @@ Expected result:
 ### 3. Run a bounded smoke check
 
 ```bash
-go run ./cmd/fk-upgrade-driver run \
+go run ./cmd/tidb-fk-test run \
   --nodes 127.0.0.1:4000 \
   --duration 3s \
   --progress-report-interval 1s
@@ -93,7 +92,7 @@ go run ./cmd/fk-upgrade-driver run \
 Equivalent three-node example:
 
 ```bash
-go run ./cmd/fk-upgrade-driver run \
+go run ./cmd/tidb-fk-test run \
   --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
   --duration 3s \
   --progress-report-interval 1s
@@ -103,7 +102,7 @@ Expected result with the current bounded run path:
 
 - exit code `0`
 - one console line printing `Error log: logs/error-<epoch>.log`
-- one startup log line with message `starting fk upgrade driver`
+- one startup log line with message `starting tidb-fk-test`
 - `initial_phase=run`
 - recurring `run progress snapshot` logs while the `3s` duration is still
   active
@@ -112,12 +111,12 @@ Expected result with the current bounded run path:
 - detailed runtime error events are written to the error log file rather than
   printed in the console summaries
 - non-zero `ExpectedFailure` counts if the target TiDB reproduces the current
-  two explicit parent-upgrade probes under shared-lock checking
+  two explicit expected-failure probes under shared-lock checking
 
 What you should not expect yet:
 
-- an upgrade controller or a post-upgrade phase
 - exact deterministic execution counts across machines
+- a broader orchestration layer beyond the current `prepare` and `run` flow
 
 ## Operator Notes
 

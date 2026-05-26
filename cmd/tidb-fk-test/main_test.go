@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
-	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/checker"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 func TestBuildDSNsParsesMultipleNodes(t *testing.T) {
@@ -97,7 +97,7 @@ func TestBuildRunConfigUsesPreparedMetadataForSeedInputs(t *testing.T) {
 		Duration:               3 * time.Second,
 		ProgressReportInterval: time.Second,
 		GenericWorkers:         2,
-		PropertyMeWorkers:      1,
+		BillingWorkers:         1,
 		FailureProbeWorkers:    1,
 	}, seed.PreparedMetadata{
 		SeedPlanVersion:        seed.SeedPlanVersion,

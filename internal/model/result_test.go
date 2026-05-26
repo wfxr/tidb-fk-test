@@ -61,7 +61,7 @@ func TestClassifyInfraOrUpgradeTransient(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := Classify("propertyme_invoice_update", tc.err)
+			res := Classify("billing_invoice_update", tc.err)
 
 			if res.Kind != InfraOrUpgradeTransient {
 				t.Fatalf("Kind = %q, want %q", res.Kind, InfraOrUpgradeTransient)
@@ -76,7 +76,7 @@ func TestClassifyInfraOrUpgradeTransient(t *testing.T) {
 func TestClassifyUnexpectedFailure(t *testing.T) {
 	err := errors.New("Error 1452 (23000): Cannot add or update a child row")
 
-	res := Classify("propertyme_payment_insert", err)
+	res := Classify("billing_payment_insert", err)
 
 	if res.Kind != UnexpectedFailure {
 		t.Fatalf("Kind = %q, want %q", res.Kind, UnexpectedFailure)

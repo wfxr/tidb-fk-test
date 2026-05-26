@@ -5,15 +5,15 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 type Group string
 
 const (
 	GenericGroup      Group = "generic_success"
-	PropertyMeGroup   Group = "propertyme_success"
+	BillingGroup      Group = "billing_success"
 	FailureProbeGroup Group = "expected_failure_probe"
 )
 
@@ -39,8 +39,8 @@ func (m Metadata) MatchesExpectedError(err error) bool {
 }
 
 type SeedState struct {
-	Generic    seed.GenericSeedPlan
-	PropertyMe seed.PropertyMeSeedPlan
+	Generic seed.GenericSeedPlan
+	Billing seed.BillingSeedPlan
 }
 
 type Scenario interface {

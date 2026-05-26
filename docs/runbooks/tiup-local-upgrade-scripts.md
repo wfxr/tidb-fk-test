@@ -44,7 +44,7 @@ Use a name and optional port offset:
 
 ```bash
 ./scripts/create-v855-cluster.sh \
-  upgrade-poc-verify \
+  tidb-fk-test-verify \
   --port-offset 200
 ```
 
@@ -64,7 +64,7 @@ Use a matching name and optional port offset:
 
 ```bash
 ./scripts/upgrade-to-v856.sh \
-  upgrade-poc-verify \
+  tidb-fk-test-verify \
   --port-offset 200
 ```
 
@@ -107,7 +107,7 @@ Enable it without restart:
 
 ```bash
 ./scripts/toggle-shared-lock-fk-check.sh \
-  upgrade-poc-verify \
+  tidb-fk-test-verify \
   --enable \
   --port-offset 200
 ```
@@ -116,7 +116,7 @@ Enable it and restart TiDB so new sessions pick it up:
 
 ```bash
 ./scripts/toggle-shared-lock-fk-check.sh \
-  upgrade-poc-verify \
+  tidb-fk-test-verify \
   --enable \
   --restart \
   --port-offset 200
@@ -126,7 +126,7 @@ Disable it and restart TiDB:
 
 ```bash
 ./scripts/toggle-shared-lock-fk-check.sh \
-  upgrade-poc-verify \
+  tidb-fk-test-verify \
   --disable \
   --restart \
   --port-offset 200
@@ -148,7 +148,7 @@ Expected result:
 Use a matching name:
 
 ```bash
-./scripts/destroy-cluster.sh upgrade-poc-verify
+./scripts/destroy-cluster.sh tidb-fk-test-verify
 ```
 
 Expected destroy result:

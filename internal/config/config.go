@@ -5,7 +5,7 @@ import "time"
 type Config struct {
 	DSN                    []string
 	GenericWorkers         int
-	PropertyMeWorkers      int
+	BillingWorkers         int
 	FailureProbeWorkers    int
 	RunDuration            time.Duration
 	ProgressReportInterval time.Duration
@@ -16,7 +16,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		GenericWorkers:         4,
-		PropertyMeWorkers:      3,
+		BillingWorkers:         3,
 		FailureProbeWorkers:    1,
 		RunDuration:            15 * time.Minute,
 		ProgressReportInterval: 10 * time.Second,

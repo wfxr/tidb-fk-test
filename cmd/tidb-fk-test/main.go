@@ -17,14 +17,14 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/spf13/cobra"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/checker"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/config"
-	dbpkg "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/db"
-	ilog "github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/logging"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/report"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/runner"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/scenario"
-	"github.com/wenxuan/dev/tidbcloud/upgrade-poc/internal/seed"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/checker"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
+	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	ilog "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/logging"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/runner"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/scenario"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
 type connectionOptions struct {
@@ -45,7 +45,7 @@ type runOptions struct {
 	Duration               time.Duration
 	ProgressReportInterval time.Duration
 	GenericWorkers         int
-	PropertyMeWorkers      int
+	BillingWorkers         int
 	FailureProbeWorkers    int
 }
 
@@ -85,9 +85,9 @@ func runMain(args []string, deps commandDeps) int {
 	cmd.SetArgs(args)
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		if lastErrorLogPath != "" {
-			fmt.Fprintf(os.Stderr, "fk upgrade driver failed; see %s\n", lastErrorLogPath)
+			fmt.Fprintf(os.Stderr, "tidb-fk-test failed; see %s\n", lastErrorLogPath)
 		} else {
-			fmt.Fprintf(os.Stderr, "fk upgrade driver failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tidb-fk-test failed: %v\n", err)
 		}
 		return 1
 	}
@@ -122,7 +122,7 @@ func newRootCommand(deps commandDeps) *cobra.Command {
 
 	var legacyConfig string
 	rootCmd := &cobra.Command{
-		Use:           "fk-upgrade-driver",
+		Use:           "tidb-fk-test",
 		Short:         "Run the foreign-key workload prepare/run flow",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -189,7 +189,7 @@ func newRunCommand(deps commandDeps) *cobra.Command {
 		Duration:               cfgDefaults.RunDuration,
 		ProgressReportInterval: cfgDefaults.ProgressReportInterval,
 		GenericWorkers:         cfgDefaults.GenericWorkers,
-		PropertyMeWorkers:      cfgDefaults.PropertyMeWorkers,
+		BillingWorkers:         cfgDefaults.BillingWorkers,
 		FailureProbeWorkers:    cfgDefaults.FailureProbeWorkers,
 	}
 
@@ -222,14 +222,14 @@ func newRunCommand(deps commandDeps) *cobra.Command {
 			if err != nil {
 				if errors.Is(err, seed.ErrPrepareMetadataNotFound) {
 					logCommandError(errorLogger, "read_prepared_metadata", err)
-					return fmt.Errorf("prepare metadata not found: run `fk-upgrade-driver prepare` first")
+					return fmt.Errorf("prepare metadata not found: run `tidb-fk-test prepare` first")
 				}
 				logCommandError(errorLogger, "read_prepared_metadata", err)
 				return err
 			}
 			if metadata.SeedPlanVersion != seed.SeedPlanVersion {
 				err = fmt.Errorf(
-					"prepare metadata seed plan version %d is incompatible with binary version %d; rerun `fk-upgrade-driver prepare`",
+					"prepare metadata seed plan version %d is incompatible with binary version %d; rerun `tidb-fk-test prepare`",
 					metadata.SeedPlanVersion,
 					seed.SeedPlanVersion,
 				)
@@ -258,7 +258,7 @@ func newRunCommand(deps commandDeps) *cobra.Command {
 	cmd.Flags().DurationVarP(&opts.Duration, "duration", "d", opts.Duration, "how long to run workload execution")
 	cmd.Flags().DurationVarP(&opts.ProgressReportInterval, "progress-report-interval", "i", opts.ProgressReportInterval, "interval between workload progress snapshots")
 	cmd.Flags().IntVarP(&opts.GenericWorkers, "generic-workers", "g", opts.GenericWorkers, "number of generic scenario workers")
-	cmd.Flags().IntVarP(&opts.PropertyMeWorkers, "propertyme-workers", "m", opts.PropertyMeWorkers, "number of PropertyMe scenario workers")
+	cmd.Flags().IntVarP(&opts.BillingWorkers, "billing-workers", "m", opts.BillingWorkers, "number of Billing scenario workers")
 	cmd.Flags().IntVarP(&opts.FailureProbeWorkers, "failure-probe-workers", "f", opts.FailureProbeWorkers, "number of failure probe workers")
 	return cmd
 }
@@ -293,7 +293,7 @@ func buildRunConfig(opts runOptions, metadata seed.PreparedMetadata) (config.Con
 	cfg.RunDuration = opts.Duration
 	cfg.ProgressReportInterval = opts.ProgressReportInterval
 	cfg.GenericWorkers = opts.GenericWorkers
-	cfg.PropertyMeWorkers = opts.PropertyMeWorkers
+	cfg.BillingWorkers = opts.BillingWorkers
 	cfg.FailureProbeWorkers = opts.FailureProbeWorkers
 	if metadata.SeedParentRowsPerTable != 0 {
 		cfg.SeedParentRowsPerTable = metadata.SeedParentRowsPerTable
@@ -369,7 +369,7 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 	applied := seed.BuildAppliedState(cfg)
 
 	slog.Info(
-		"starting fk upgrade driver",
+		"starting tidb-fk-test",
 		"seed_plan_version", seed.SeedPlanVersion,
 		"total_workers", scheduler.TotalWorkers(),
 		"progress_report_interval", progressReporter.Interval(),
@@ -384,8 +384,8 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 		Registry:  registry,
 		Scheduler: scheduler,
 		SeedState: scenario.SeedState{
-			Generic:    applied.Generic,
-			PropertyMe: applied.PropertyMe,
+			Generic: applied.Generic,
+			Billing: applied.Billing,
 		},
 		Summary:     runtimeSummary,
 		Progress:    progressReporter,
