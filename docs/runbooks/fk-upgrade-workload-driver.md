@@ -125,8 +125,9 @@ What you should not expect yet:
   rows no longer exist, it fails fast and tells you to rerun `prepare`.
 - Seed flags belong only to `prepare`. `run` always reads those seed inputs from
   `fk_prepare_metadata`.
-- You do not need to manually `SET SESSION tidb_foreign_key_check_in_shared_lock = 1`.
-  The driver issues that statement for each worker transaction.
+- `tidb_foreign_key_check_in_shared_lock` is controlled externally by the
+  target environment. The driver does not force that session variable on each
+  transaction anymore.
 - If a run fails, check the printed `logs/error-<epoch>.log` path first. The
   console output is intentionally concise and does not echo full error details.
 - If you want a faster local smoke path, shorten `--duration`. Checker is

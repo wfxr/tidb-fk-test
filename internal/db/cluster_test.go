@@ -43,7 +43,7 @@ func TestOpenClusterDistributesTransactionsAcrossAliveNodes(t *testing.T) {
 	}
 }
 
-func TestClusterBeginTxKeepsTransactionStickyAndInitializesSession(t *testing.T) {
+func TestClusterBeginTxKeepsTransactionSticky(t *testing.T) {
 	state := newFakeClusterState()
 	state.setAlive("node-a", true)
 
@@ -75,7 +75,6 @@ func TestClusterBeginTxKeepsTransactionStickyAndInitializesSession(t *testing.T)
 	}
 
 	want := []string{
-		enableSharedLockFKCheckSQL,
 		"UPDATE sticky_test SET value = 1",
 		"SELECT current_dsn",
 		"COMMIT",
@@ -167,7 +166,6 @@ func TestOpenClusterReturnsPreflightErrorBeforeHealthcheckTimeout(t *testing.T) 
 		UpdateInterval: 10 * time.Millisecond,
 		UpdateTimeout:  10 * time.Millisecond,
 		StartupWait:    50 * time.Millisecond,
-		SessionInitSQL: enableSharedLockFKCheckSQL,
 	})
 	if err == nil {
 		t.Fatal("openCluster() error = nil, want preflight error")
@@ -192,7 +190,6 @@ func openTestCluster(t *testing.T, state *fakeClusterState, dsns []string) *Clus
 		DSNs:           dsns,
 		UpdateInterval: 10 * time.Millisecond,
 		UpdateTimeout:  10 * time.Millisecond,
-		SessionInitSQL: enableSharedLockFKCheckSQL,
 	})
 	if err != nil {
 		t.Fatalf("openCluster() error = %v", err)

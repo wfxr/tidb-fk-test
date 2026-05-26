@@ -11,8 +11,6 @@ import (
 	hasql "golang.yandex/hasql/v2"
 )
 
-const enableSharedLockFKCheckSQL = "SET SESSION tidb_foreign_key_check_in_shared_lock = 1"
-
 const (
 	defaultClusterUpdateInterval = time.Second
 	defaultClusterUpdateTimeout  = time.Second
@@ -25,13 +23,11 @@ type clusterConfig struct {
 	UpdateInterval time.Duration
 	UpdateTimeout  time.Duration
 	StartupWait    time.Duration
-	SessionInitSQL string
 }
 
 // Cluster owns the TiDB node pools and routes app traffic to alive nodes.
 type Cluster struct {
-	cluster        *hasql.Cluster[*sql.DB]
-	sessionInitSQL string
+	cluster *hasql.Cluster[*sql.DB]
 }
 
 func OpenTiDBCluster(ctx context.Context, dsns []string) (*Cluster, error) {
@@ -41,7 +37,6 @@ func OpenTiDBCluster(ctx context.Context, dsns []string) (*Cluster, error) {
 		UpdateInterval: defaultClusterUpdateInterval,
 		UpdateTimeout:  defaultClusterUpdateTimeout,
 		StartupWait:    defaultClusterStartupWait,
-		SessionInitSQL: enableSharedLockFKCheckSQL,
 	})
 }
 
@@ -97,10 +92,7 @@ func openCluster(ctx context.Context, cfg clusterConfig) (*Cluster, error) {
 		return nil, err
 	}
 
-	return &Cluster{
-		cluster:        cl,
-		sessionInitSQL: cfg.SessionInitSQL,
-	}, nil
+	return &Cluster{cluster: cl}, nil
 }
 
 func (c *Cluster) Close() error {
@@ -122,13 +114,6 @@ func (c *Cluster) BeginTx(ctx context.Context, opts *sql.TxOptions) (Tx, error) 
 		if err != nil {
 			beginErr = errors.Join(beginErr, err)
 			continue
-		}
-		if initSQL := c.sessionInitSQL; initSQL != "" {
-			if _, err := tx.ExecContext(ctx, initSQL); err != nil {
-				_ = tx.Rollback()
-				beginErr = errors.Join(beginErr, err)
-				continue
-			}
 		}
 		return sqlTx{Tx: tx}, nil
 	}

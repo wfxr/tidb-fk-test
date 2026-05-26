@@ -24,8 +24,8 @@ It is still a smoke-path driver, not a full rolling-upgrade controller.
   `run` does not need seed flags.
 - The default worker layout is 8 total workers split into 4 generic, 3
   PropertyMe, and 1 failure-probe worker.
-- Each worker transaction runs
-  `SET SESSION tidb_foreign_key_check_in_shared_lock = 1`.
+- Whether `tidb_foreign_key_check_in_shared_lock` is enabled is now controlled
+  externally by the target environment, not by the driver itself.
 - `run` emits recurring `run progress snapshot` logs every
   `--progress-report-interval` while the workload is active.
 - `run` prints a final `Run Summary`, then always runs checker validation and
