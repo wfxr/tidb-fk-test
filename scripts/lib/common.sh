@@ -151,6 +151,17 @@ run_mysql_statement() {
   "${cmd[@]}"
 }
 
+show_global_variable_value() {
+  local port="$1"
+  local variable_name="$2"
+  local output
+
+  output="$(run_mysql_statement "$port" "show global variables like '$variable_name'")" \
+    || die "failed to query global variable '$variable_name' on TiDB port $port"
+
+  awk 'NR == 1 {print $2}' <<<"$output"
+}
+
 assert_tidb_sql_version() {
   local port="$1"
   local expected="$2"
@@ -183,6 +194,48 @@ ensure_database_exists() {
   log_step "Ensured database '$database_name' exists on TiDB port $port"
 }
 
+enable_shared_lock_fk_check() {
+  local port="$1"
+
+  run_mysql_statement "$port" \
+    "set global tidb_foreign_key_check_in_shared_lock = 1" \
+    >/dev/null
+  log_step "Enabled tidb_foreign_key_check_in_shared_lock through TiDB port $port"
+}
+
+assert_shared_lock_fk_check_value() {
+  local port="$1"
+  local expected_state="$2"
+  local observed
+
+  observed="$(show_global_variable_value "$port" "tidb_foreign_key_check_in_shared_lock")"
+  case "$expected_state" in
+    enabled)
+      case "$observed" in
+        1|ON|on)
+          log_step "TiDB port $port reports tidb_foreign_key_check_in_shared_lock=$observed"
+          ;;
+        *)
+          die "unexpected tidb_foreign_key_check_in_shared_lock value on port $port: expected enabled, got '$observed'"
+          ;;
+      esac
+      ;;
+    disabled)
+      case "$observed" in
+        0|OFF|off)
+          log_step "TiDB port $port reports tidb_foreign_key_check_in_shared_lock=$observed"
+          ;;
+        *)
+          die "unexpected tidb_foreign_key_check_in_shared_lock value on port $port: expected disabled, got '$observed'"
+          ;;
+      esac
+      ;;
+    *)
+      die "unsupported expected shared-lock FK check state: $expected_state"
+      ;;
+  esac
+}
+
 assert_display_output_healthy() {
   local scope="$1"
   local output="$2"
@@ -198,7 +251,6 @@ assert_cluster_display_healthy() {
   local output
 
   output="$(tiup cluster display "$cluster_name" --versions)"
-  printf '%s\n' "$output"
   assert_display_output_healthy "cluster $cluster_name" "$output"
 }
 

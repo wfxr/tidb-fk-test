@@ -17,6 +17,12 @@ This runbook covers the local single-host TiUP scripts under `scripts/`.
   - patch order is `pd -> tikv -> tidb`
   - patch tarballs are generated from local TiUP component binaries under
     `~/.tiup/components/<role>/v8.5.6/`
+- `scripts/toggle-shared-lock-fk-check.sh`
+  - toggles `tidb_foreign_key_check_in_shared_lock` globally
+  - executes the global setting through the first TiDB node
+  - optionally reloads the TiDB role with `--restart`
+  - verifies the global variable value on the first TiDB node, and on all
+    TiDB nodes after restart
 - `scripts/destroy-cluster.sh`
   - destroys the TiUP cluster
   - removes the repo-local runtime directory under `scripts/data/<cluster-name>/`
@@ -88,6 +94,54 @@ export it when running verification or upgrade commands:
 ```bash
 MYSQL_PASSWORD='your-password' ./scripts/upgrade-to-v856.sh your-cluster
 ```
+
+The same `MYSQL_PASSWORD` override applies to the shared-lock toggle script:
+
+```bash
+MYSQL_PASSWORD='your-password' ./scripts/toggle-shared-lock-fk-check.sh your-cluster --enable
+```
+
+## Toggle Shared-Lock FK Check
+
+Enable it without restart:
+
+```bash
+./scripts/toggle-shared-lock-fk-check.sh \
+  upgrade-poc-verify \
+  --enable \
+  --port-offset 200
+```
+
+Enable it and restart TiDB so new sessions pick it up:
+
+```bash
+./scripts/toggle-shared-lock-fk-check.sh \
+  upgrade-poc-verify \
+  --enable \
+  --restart \
+  --port-offset 200
+```
+
+Disable it and restart TiDB:
+
+```bash
+./scripts/toggle-shared-lock-fk-check.sh \
+  upgrade-poc-verify \
+  --disable \
+  --restart \
+  --port-offset 200
+```
+
+Expected result:
+
+1. the script verifies `tiup cluster display <cluster-name> --versions` is healthy
+2. it executes `SET GLOBAL tidb_foreign_key_check_in_shared_lock = 1` or `0`
+   through the first TiDB node
+3. it verifies `SHOW GLOBAL VARIABLES LIKE 'tidb_foreign_key_check_in_shared_lock'`
+   on the first TiDB node
+4. if `--restart` is supplied, it runs `tiup cluster reload <cluster-name> -R tidb`
+   and then verifies the
+   variable value on all three TiDB nodes
 
 ## Destroy a Cluster
 
