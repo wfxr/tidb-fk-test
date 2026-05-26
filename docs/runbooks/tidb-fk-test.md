@@ -58,18 +58,18 @@ go test ./...
 
 ### 2. Prepare a bounded smoke target
 
-Single-node local example:
-
-```bash
-go run ./cmd/tidb-fk-test prepare \
-  --nodes 127.0.0.1:4000
-```
-
-Three-node local playground example:
+Recommended three-node local playground example:
 
 ```bash
 go run ./cmd/tidb-fk-test prepare \
   --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002
+```
+
+Minimal single-node alternative:
+
+```bash
+go run ./cmd/tidb-fk-test prepare \
+  --nodes 127.0.0.1:4000
 ```
 
 Expected result:
@@ -84,16 +84,16 @@ Expected result:
 
 ```bash
 go run ./cmd/tidb-fk-test run \
-  --nodes 127.0.0.1:4000 \
+  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
   --duration 3s \
   --progress-report-interval 1s
 ```
 
-Equivalent three-node example:
+Minimal single-node alternative:
 
 ```bash
 go run ./cmd/tidb-fk-test run \
-  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
+  --nodes 127.0.0.1:4000 \
   --duration 3s \
   --progress-report-interval 1s
 ```
@@ -127,6 +127,10 @@ What you should not expect yet:
 - `tidb_foreign_key_check_in_shared_lock` is controlled externally by the
   target environment. The driver does not force that session variable on each
   transaction anymore.
+- For repo-local TiUP clusters, use
+  `./scripts/toggle-shared-lock-fk-check.sh <cluster-name> --enable --restart`
+  if you want new sessions to pick up shared-lock FK checking before running
+  the workload.
 - If a run fails, check the printed `logs/error-<epoch>.log` path first. The
   console output is intentionally concise and does not echo full error details.
 - If you want a faster local smoke path, shorten `--duration`. Checker is

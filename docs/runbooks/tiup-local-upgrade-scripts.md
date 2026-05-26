@@ -103,6 +103,9 @@ MYSQL_PASSWORD='your-password' ./scripts/toggle-shared-lock-fk-check.sh your-clu
 
 ## Toggle Shared-Lock FK Check
 
+Use this before `go run ./cmd/tidb-fk-test run ...` when you want new TiDB
+sessions to pick up `tidb_foreign_key_check_in_shared_lock`.
+
 Enable it without restart:
 
 ```bash

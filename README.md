@@ -43,31 +43,39 @@ Run the repo checks from the repo root:
 go test ./...
 ```
 
-Prepare a reachable TiDB/MySQL-compatible target:
+Prepare a reachable three-node TiDB/MySQL-compatible target:
 
 ```bash
 go run ./cmd/tidb-fk-test prepare \
-  --nodes 127.0.0.1:4000
+  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002
 ```
 
 Then run the bounded workload and checker:
 
 ```bash
 go run ./cmd/tidb-fk-test run \
+  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
+  --duration 3s \
+  --progress-report-interval 1s
+```
+
+Minimal single-node alternative:
+
+```bash
+go run ./cmd/tidb-fk-test prepare \
+  --nodes 127.0.0.1:4000 && \
+go run ./cmd/tidb-fk-test run \
   --nodes 127.0.0.1:4000 \
   --duration 3s \
   --progress-report-interval 1s
 ```
 
-Three-node local playground example:
+If you are using the repo-local TiUP scripts, enable shared-lock FK checking
+before the smoke run when you want the current expected-failure probes to fire
+under that mode:
 
 ```bash
-go run ./cmd/tidb-fk-test prepare \
-  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 && \
-go run ./cmd/tidb-fk-test run \
-  --nodes 127.0.0.1:4000,127.0.0.1:4001,127.0.0.1:4002 \
-  --duration 3s \
-  --progress-report-interval 1s
+./scripts/toggle-shared-lock-fk-check.sh tidb-fk-test-verify --enable --restart
 ```
 
 Expected run behavior on a reachable local playground:
@@ -90,6 +98,8 @@ Notes:
 - `run` is strict: if `fk_prepare_metadata` is missing, version-incompatible,
   or the prepared seed rows are not present, it fails and tells you to run
   `prepare` first.
+- The repo-local TiUP helper for shared-lock FK checking is
+  `scripts/toggle-shared-lock-fk-check.sh`.
 - `--duration` is the workload execution window. For a minimal smoke path, keep
   it short, such as `3s`.
 - If `--duration` is shorter than or equal to
@@ -102,4 +112,6 @@ Notes:
   root
 - `docs/runbooks/tiup-local-upgrade-scripts.md`: local TiUP cluster create and
   upgrade script runbook
+- `AGENTS.md`: contributor guide for repository structure, commands, and review
+  expectations
 - `cmd/tidb-fk-test/main.go`: current CLI entrypoint
