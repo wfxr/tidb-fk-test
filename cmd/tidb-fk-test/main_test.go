@@ -14,6 +14,7 @@ import (
 	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/checker"
 	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/config"
 	dbpkg "github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/db"
+	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/report"
 	"github.com/wenxuan/dev/tidbcloud/tidb-fk-test/internal/seed"
 )
 
@@ -265,6 +266,31 @@ func TestRunWorkloadPrintsSummaryWhenContextCanceled(t *testing.T) {
 	}
 	if db.canceledQueryCalls != 0 {
 		t.Fatalf("QueryRowContext canceled calls = %d, want 0", db.canceledQueryCalls)
+	}
+}
+
+func TestLogRunProgressSnapshotOmitsDuplicateTimestampField(t *testing.T) {
+	var buf bytes.Buffer
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(oldDefault)
+
+	logRunProgressSnapshot(report.Snapshot{
+		Timestamp:         time.Date(2026, time.May, 26, 12, 0, 1, 0, time.UTC),
+		Phase:             "run",
+		ActiveWorkers:     3,
+		TotalExecuted:     7,
+		Success:           5,
+		ExpectedFailure:   1,
+		UnexpectedFailure: 1,
+	})
+
+	output := buf.String()
+	if !strings.Contains(output, "run progress snapshot") {
+		t.Fatalf("output = %q, want progress log message", output)
+	}
+	if strings.Contains(output, "timestamp=") {
+		t.Fatalf("output = %q, want no duplicate timestamp field", output)
 	}
 }
 

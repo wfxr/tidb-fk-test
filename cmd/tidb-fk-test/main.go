@@ -393,16 +393,7 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 		Now:         time.Now,
 		ErrorLogger: errorLogger,
 		OnProgress: func(snapshot report.Snapshot) {
-			slog.Info(
-				"run progress snapshot",
-				"phase", snapshot.Phase,
-				"active_workers", snapshot.ActiveWorkers,
-				"total_executed", snapshot.TotalExecuted,
-				"success", snapshot.Success,
-				"expected_failure", snapshot.ExpectedFailure,
-				"unexpected_failure", snapshot.UnexpectedFailure,
-				"timestamp", snapshot.Timestamp,
-			)
+			logRunProgressSnapshot(snapshot)
 		},
 	})
 	runErr := engine.Run(ctx)
@@ -424,6 +415,18 @@ func runWorkload(ctx context.Context, cfg config.Config, now time.Time, db clust
 	}
 
 	return runFinalChecks(ctx, db, applied, runtimeSummary)
+}
+
+func logRunProgressSnapshot(snapshot report.Snapshot) {
+	slog.Info(
+		"run progress snapshot",
+		"phase", snapshot.Phase,
+		"active_workers", snapshot.ActiveWorkers,
+		"total_executed", snapshot.TotalExecuted,
+		"success", snapshot.Success,
+		"expected_failure", snapshot.ExpectedFailure,
+		"unexpected_failure", snapshot.UnexpectedFailure,
+	)
 }
 
 func runFinalChecks(ctx context.Context, db clusterConn, applied seed.AppliedState, runtimeSummary *report.Summary) error {
