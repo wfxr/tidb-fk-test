@@ -35,6 +35,31 @@ The current implementation is a two-step CLI:
   - `payment_bill_update_probe`
   - `statement_folio_parent_update_probe`
 
+## Workload Groups
+
+The runtime mixes three workload groups. By default, `run` starts 8 workers:
+4 `generic_success`, 3 `billing_success`, and 1
+`expected_failure_probe`.
+
+- `generic_success`
+  Covers compact FK correctness paths on the generic fixture tables. These
+  scenarios exercise inserts, child updates, parent rebinding, cascade delete,
+  and hot-parent contention. Representative names include
+  `generic_insert_existing_parent`, `generic_rebind_child_fk`, and
+  `generic_delete_parent_cascade`.
+- `billing_success`
+  Covers wider billing-style FK graphs and multi-step mutations across tables
+  such as `journal`, `posting`, `bill`, `statement`, `withdrawal`, and
+  `payment`. Representative names include `billing_journal_posting_bill`,
+  `billing_fk_backfill`, `billing_payment_mixed_references`, and
+  `billing_cascade_path`.
+- `expected_failure_probe`
+  Covers targeted shared-lock upgrade probes that are expected to fail when
+  TiDB enforces `tidb_foreign_key_check_in_shared_lock`. The current probes are
+  `payment_bill_update_probe` and `statement_folio_parent_update_probe`. Their
+  matching errors are counted as expected failures in the run summary rather
+  than unexpected workload errors.
+
 ## Operator Quick Start
 
 Run the repo checks from the repo root:
