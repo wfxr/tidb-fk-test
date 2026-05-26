@@ -1,0 +1,660 @@
+resources:
+  - name: nextgen-s3-load
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function install-sysbench() {
+                  dnf -y install git make automake libtool pkgconfig libaio-devel openssl-devel
+                  dnf -y install mariadb-connector-c-devel
+
+                  git clone https://github.com/zyguan/sysbench.git /root/sysbench
+                  pushd /root/sysbench
+                  git checkout dev
+                  ./autogen.sh
+                  ./configure
+                  make -j
+                  make install
+                  popd
+              }
+
+              function install-jsonnet() {
+                  gsutil cp gs://oltp-bench-us-east5/tools/go-jsonnet_0.20.0_Linux_x86_64.tar.gz /tmp/jsonnet.tar.gz
+                  tar -xf /tmp/jsonnet.tar.gz -C /usr/local/bin
+              }
+
+              function install-yq() {
+                  gsutil cp gs://oltp-bench-us-east5/tools/yq_linux_amd64.tar.gz /tmp/yq.tar.gz
+                  tar -xf /tmp/yq.tar.gz -C /usr/local/bin ./yq_linux_amd64
+                  mv /usr/local/bin/yq_linux_amd64 /usr/local/bin/yq
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              function user-wait-creation() {
+                  while ! test -d /home/transaction/.ssh; do
+                      echo waiting user creation
+                      sleep 5
+                  done
+              }
+
+              function user-install-auth-key() {
+                  sudo -u transaction bash -c 'gcloud secrets versions access latest --secret=transaction-team-auth-key > ~/.ssh/id_rsa; chmod 600 ~/.ssh/id_rsa'
+              }
+
+              function user-install-app-key() {
+                  sudo -u transaction bash -c 'mkdir -p ~/.config/gcloud; gcloud secrets versions access latest --secret=gs-cred-key > ~/.config/gcloud/application_default_credentials.json'
+              }
+
+              function user-install-tiup() {
+                  sudo -u transaction bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh'
+              }
+
+              set -x
+              install-commons
+              install-sysbench
+              install-jsonnet
+              install-yq
+              user-wait-creation
+              user-install-app-key
+              user-install-auth-key
+              user-install-tiup
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-pd-0
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-pd-0
+          source: $(ref.nextgen-s3-data-pd-0.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-pd-0
+    properties:
+      sizeGb: "50"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-pd-1
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-pd-1
+          source: $(ref.nextgen-s3-data-pd-1.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-pd-1
+    properties:
+      sizeGb: "50"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-pd-2
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-pd-2
+          source: $(ref.nextgen-s3-data-pd-2.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-pd-2
+    properties:
+      sizeGb: "50"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-tikv-0
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-tikv-0
+          source: $(ref.nextgen-s3-data-tikv-0.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-tikv-1
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-tikv-1
+          source: $(ref.nextgen-s3-data-tikv-1.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-tikv-2
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-tikv-2
+          source: $(ref.nextgen-s3-data-tikv-2.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-tikv-0
+    properties:
+      sizeGb: "100"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-data-tikv-1
+    properties:
+      sizeGb: "100"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-data-tikv-2
+    properties:
+      sizeGb: "100"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-tidb-system
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-4-8192
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              set -x
+              install-commons
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-tidb-0
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-4-8192
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              set -x
+              install-commons
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-tikv-worker
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-tikv-worker
+          source: $(ref.nextgen-s3-data-tikv-worker.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-8-16384
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+              }
+
+              set -x
+              install-commons
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-tikv-worker
+    properties:
+      sizeGb: "100"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
+
+  - name: nextgen-s3-minio
+    properties:
+      disks:
+        - autoDelete: true
+          boot: true
+          deviceName: boot
+          initializeParams:
+            sourceImage: https://www.googleapis.com/compute/v1/projects/rocky-linux-cloud/global/images/rocky-linux-9-optimized-gcp-v20241112
+          type: PERSISTENT
+        - autoDelete: true
+          deviceName: nextgen-s3-data-minio
+          source: $(ref.nextgen-s3-data-minio.selfLink)
+          type: PERSISTENT
+      machineType: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/machineTypes/n2-custom-4-8192
+      metadata:
+        items:
+          - key: startup-script
+            value: |
+              function install-commons() {
+                  dnf install -y --setopt=install_weak_deps=false epel-release
+                  dnf install -y --setopt=install_weak_deps=false git tig lnav tmux rsync numactl mysql bash-completion curl wget
+              }
+
+              function install-minio() {
+                  wget https://dl.min.io/server/minio/release/linux-amd64/minio -O /usr/local/bin/minio
+                  chmod +x /usr/local/bin/minio
+
+                  useradd -r minio-user -s /sbin/nologin
+                  mkdir -p /etc/minio
+                  mkdir -p /var/log/minio
+                  chown minio-user:minio-user /var/log/minio
+              }
+
+              function setup-minio-service() {
+                  cat > /etc/systemd/system/minio.service << 'MINIO_SERVICE_END'
+              [Unit]
+              Description=MinIO Object Storage
+              Documentation=https://docs.min.io
+              Wants=network-online.target
+              After=network-online.target
+              AssertFileIsExecutable=/usr/local/bin/minio
+
+              [Service]
+              WorkingDirectory=/usr/local/
+              User=minio-user
+              Group=minio-user
+              EnvironmentFile=/etc/minio/minio.conf
+              ExecStartPre=/bin/chown -R minio-user:minio-user /data
+              ExecStart=/usr/local/bin/minio server --console-address ":9001" /data/minio
+              Restart=always
+              StandardOutput=journal
+              StandardError=inherit
+              SyslogIdentifier=minio
+              KillSignal=SIGTERM
+              SendSIGKILL=no
+              SuccessExitStatus=0
+              LimitNOFILE=1048576
+              LimitNPROC=1048576
+
+              [Install]
+              WantedBy=multi-user.target
+              MINIO_SERVICE_END
+
+                  cat > /etc/minio/minio.conf << 'EOF'
+              MINIO_ROOT_USER=minioadmin
+              MINIO_ROOT_PASSWORD=minioadmin
+              MINIO_VOLUMES="/data/minio"
+              MINIO_OPTS="--console-address :9001"
+              EOF
+                  chmod 640 /etc/minio/minio.conf
+              }
+
+              function mount-disk() {
+                  local disk=${1:-/dev/sdb}
+                  local mount_point=${2:-/data}
+                  mkdir -p $mount_point
+                  mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard $disk
+                  echo "$(blkid -o export $disk | grep UUID) $mount_point ext4 discard,defaults,noatime 0 2" | tee -a /etc/fstab
+                  systemctl daemon-reload
+                  mount $disk
+
+                  mkdir -p /data/minio
+                  chown -R minio-user:minio-user /data
+              }
+
+              set -x
+              install-commons
+              install-minio
+              mount-disk $([[ $(mount | grep 'on / type') == /dev/sda* ]] && echo /dev/sdb || echo /dev/sda)
+              setup-minio-service
+              systemctl daemon-reload
+              systemctl enable minio
+              systemctl start minio
+      networkInterfaces:
+        - accessConfigs:
+            - name: External NAT
+              type: ONE_TO_ONE_NAT
+          network: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/global/networks/default
+      serviceAccounts:
+        - email: benchmark@gcp-tikv-transaction-dev.iam.gserviceaccount.com
+          scopes:
+            - https://www.googleapis.com/auth/cloud-platform
+      tags:
+        items:
+          - minio-server
+      zone: us-east5-b
+    type: compute.v1.instance
+
+  - name: nextgen-s3-data-minio
+    properties:
+      sizeGb: "100"
+      type: https://www.googleapis.com/compute/v1/projects/gcp-tikv-transaction-dev/zones/us-east5-b/diskTypes/pd-ssd
+      zone: us-east5-b
+    type: compute.v1.disk
