@@ -17,6 +17,9 @@
 - `destroy-gcp-cluster.sh`
   - 删除整个 Deployment Manager deployment
   - 可显式传入 prefix，也可在只有一个本地状态文件时自动读取
+- `upgrade-gcp-cluster.sh`
+  - 现有 TiDB-X GCP 测试集群的一键升级入口
+  - 已按当前本地拓扑验证 `202510 -> 202603` 升级路径
 - `choose-prefix.sh`
   - 生成唯一 prefix，并检查当前 deployment / instance / disk 是否冲突
 - `render-gcp-config.sh`
@@ -79,6 +82,27 @@ bash scripts/tidbx-gcp/destroy-gcp-cluster.sh --yes
 
 如果本地状态文件有多个，脚本会列出每个 prefix 对应的 `.env` 文件，并要求你重新显式指定。
 
+## 升级
+
+显式指定 prefix：
+
+```bash
+bash scripts/tidbx-gcp/upgrade-gcp-cluster.sh --prefix your-prefix
+```
+
+如果本地 `state/` 下只有一个状态文件，也可以直接：
+
+```bash
+bash scripts/tidbx-gcp/upgrade-gcp-cluster.sh
+```
+
+当前固定升级目标版本：
+
+- `pd`: `v26.3.0-nextgen`
+- `tidb`: `v26.3.0-nextgen`
+- `tikv`: `v26.3.2-nextgen`
+- `tikv-worker`: 随 `tikv` 包升级
+
 ## 本地状态文件
 
 创建脚本会在 `state/<prefix>.env` 中记录本地状态。
@@ -104,6 +128,17 @@ bash scripts/tidbx-gcp/destroy-gcp-cluster.sh --yes
 - `PD_TAG`
 - `TIDB_TAG`
 - `TIKV_TAG`
+
+升级流程还会追加：
+
+- `UPGRADE_STATUS`
+- `UPGRADE_STAGE`
+- `UPGRADE_TARGET_PD_TAG`
+- `UPGRADE_TARGET_TIDB_TAG`
+- `UPGRADE_TARGET_TIKV_TAG`
+- `UPGRADE_LAST_ERROR`
+- `UPGRADE_STARTED_AT`
+- `UPGRADE_FINISHED_AT`
 
 运行时生成的 `.env` 文件不应提交到 git。
 
