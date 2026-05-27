@@ -430,10 +430,6 @@ func logRunProgressSnapshot(snapshot report.Snapshot) {
 }
 
 func runFinalChecks(ctx context.Context, db clusterConn, applied seed.AppliedState, runtimeSummary *report.Summary) error {
-	if err := syncProbeSummary(ctx, db, runtimeSummary); err != nil {
-		return err
-	}
-
 	checkSummary, err := checker.Run(ctx, checkerQueryer{Queryer: db}, applied, runtimeSummary)
 	if err != nil {
 		return err
@@ -497,37 +493,17 @@ func printCheckerSummary(out io.Writer, summary checker.Summary) {
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Check\tCount\tUnexpected\tPassed")
+	fmt.Fprintln(w, "Check\tCount\tPassed")
 	for _, item := range summary.Outcomes {
 		fmt.Fprintf(
 			w,
-			"%s\t%d\t%d\t%t\n",
+			"%s\t%d\t%t\n",
 			item.Name,
 			item.Count,
-			item.UnexpectedFailure,
 			item.Passed,
 		)
 	}
 	_ = w.Flush()
-}
-
-func syncProbeSummary(ctx context.Context, db dbpkg.Execer, runtime *report.Summary) error {
-	if runtime == nil {
-		return nil
-	}
-
-	stats, ok := runtime.Scenario("payment_bill_update_probe")
-	if !ok {
-		return nil
-	}
-
-	_, err := db.ExecContext(
-		ctx,
-		"INSERT INTO probe_summary (singleton_id, expected_fk_failure, unexpected_failure) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE expected_fk_failure = VALUES(expected_fk_failure), unexpected_failure = VALUES(unexpected_failure)",
-		stats.ExpectedFailure,
-		stats.UnexpectedFailure,
-	)
-	return err
 }
 
 type checkerQueryer struct {
