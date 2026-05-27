@@ -850,13 +850,25 @@ upgrade_tidb_family() {
 }
 
 enable_share_lock_setting() {
-  local user_tidb_cmd share_lock_value
+  local user_tidb_cmd share_lock_value display_output
 
   user_tidb_cmd="$(remote_user_tidb_command)"
 
   CURRENT_STAGE="enable-share-lock-set"
   LAST_ERROR_REASON="failed to enable tidb_foreign_key_check_in_shared_lock on User TiDB"
   load_ssh "${user_tidb_cmd} -e \"SET GLOBAL tidb_foreign_key_check_in_shared_lock = 1;\" >/dev/null"
+
+  CURRENT_STAGE="enable-share-lock-reload"
+  LAST_ERROR_REASON="failed to reload TiDB family after enabling tidb_foreign_key_check_in_shared_lock"
+  load_ssh "~/.tiup/bin/tiup cluster reload ${PREFIX} -R tidb -y"
+
+  CURRENT_STAGE="enable-share-lock-reload-verify"
+  LAST_ERROR_REASON="failed to verify TiDB family health after reloading tidb for share lock setting"
+  display_output="$(cluster_display_output)"
+  require_display_output_healthy "TiDB family after share lock reload for ${PREFIX}" "$display_output"
+  require_display_hosts_present "tidb" "$display_output" \
+    "${PREFIX}-tidb-system" \
+    "${PREFIX}-tidb-0"
 
   CURRENT_STAGE="enable-share-lock-verify"
   LAST_ERROR_REASON="share lock setting is not visible from a new User TiDB connection"

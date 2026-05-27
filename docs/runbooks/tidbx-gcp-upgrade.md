@@ -97,7 +97,7 @@
 | `Tikv worker` | 单独的 `tikv-worker` 节点与进程 |
 | `Tikv` | `3 TiKV` 节点 |
 | `TiDB worker` / `TiDB - keyspace 1` / `TiDB - keyspace 2` | 本地的 `tidb-system` 和 `tidb-0` |
-| 升级后开启 `tidb_foreign_key_check_in_shared_lock` | 升级后在 `User TiDB` 上执行并验证 |
+| 升级后开启 `tidb_foreign_key_check_in_shared_lock` | 升级后在 `User TiDB` 上执行，reload `tidb` role，并用新连接验证 |
 
 当前脚本不会处理本地不存在的 Cloud 组件。它们不是“忘了做”，而是当前拓扑里确实没有：
 
@@ -139,6 +139,7 @@
 - 尝试把 `202603` 所需的 TiKV 配置项写入 TiUP 元数据，并在 TiKV 升级后检查 live `tikv.toml`
 - 在升级后执行：
   - `SET GLOBAL tidb_foreign_key_check_in_shared_lock = 1`
+  - `tiup cluster reload <prefix> -R tidb -y`
   - 新连接验证该变量
   - 最终版本、连通性、`tikv-worker` metrics 和最小 SQL smoke test
 
@@ -294,6 +295,12 @@ bash scripts/tidbx-gcp/upgrade-gcp-cluster.sh
 
 ```sql
 SET GLOBAL tidb_foreign_key_check_in_shared_lock = 1;
+```
+
+然后执行：
+
+```bash
+~/.tiup/bin/tiup cluster reload <prefix> -R tidb -y
 ```
 
 然后通过新的连接执行：
