@@ -13,15 +13,11 @@ type CheckKind string
 const (
 	OrphanChildCheck CheckKind = "orphan_child"
 	CascadeCheck     CheckKind = "cascade"
-	ProbeCheck       CheckKind = "probe"
 )
-
-const probeScenarioName = "payment_bill_update_probe"
 
 var defaultCheckOrder = []string{
 	"generic_orphan_child",
 	"cascade_result",
-	"probe_error_match",
 }
 
 var defaultChecks = map[string]Definition{
@@ -34,11 +30,6 @@ var defaultChecks = map[string]Definition{
 		Name:  "cascade_result",
 		Kind:  CascadeCheck,
 		Query: "SELECT COUNT(*) FROM child_cascade WHERE parent_id = ?",
-	},
-	"probe_error_match": {
-		Name:  "probe_error_match",
-		Kind:  ProbeCheck,
-		Query: "SELECT expected_fk_failure, unexpected_failure FROM probe_summary LIMIT 1",
 	},
 }
 
@@ -125,18 +116,6 @@ func runCheck(
 			Passed: count == 0,
 			Count:  count,
 		}, nil
-	case ProbeCheck:
-		var expected, unexpected int64
-		if err := db.QueryRowContext(ctx, def.Query).Scan(&expected, &unexpected); err != nil {
-			return Outcome{}, err
-		}
-		return Outcome{
-			Name:              def.Name,
-			Kind:              def.Kind,
-			Passed:            probeMatchesRuntime(runtime, expected, unexpected),
-			ExpectedFKFailure: expected,
-			UnexpectedFailure: unexpected,
-		}, nil
 	default:
 		return Outcome{}, fmt.Errorf("unsupported check kind %q", def.Kind)
 	}
@@ -152,17 +131,4 @@ func checkArgs(def Definition, applied seed.AppliedState) []any {
 		parentID = applied.Generic.DeleteParentCascadeSlots[0].ParentID
 	}
 	return []any{parentID}
-}
-
-func probeMatchesRuntime(runtime *report.Summary, expected, unexpected int64) bool {
-	if runtime == nil {
-		return unexpected == 0
-	}
-
-	stats, ok := runtime.Scenario(probeScenarioName)
-	if !ok {
-		return unexpected == 0
-	}
-
-	return stats.ExpectedFailure == expected && stats.UnexpectedFailure == unexpected
 }

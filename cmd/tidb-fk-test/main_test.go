@@ -185,16 +185,15 @@ func TestRunCommandRegistersCoreShorthands(t *testing.T) {
 	}
 }
 
-func TestPrintCheckerSummaryOrdersColumnsAsCheckCountUnexpectedPassed(t *testing.T) {
+func TestPrintCheckerSummaryOrdersColumnsAsCheckCountPassed(t *testing.T) {
 	var buf bytes.Buffer
 
 	printCheckerSummary(&buf, checker.Summary{
 		Outcomes: []checker.Outcome{
 			{
-				Name:              "probe_error_match",
+				Name:              "generic_orphan_child",
 				Passed:            true,
 				Count:             7,
-				ExpectedFKFailure: 5,
 				UnexpectedFailure: 2,
 			},
 		},
@@ -205,19 +204,19 @@ func TestPrintCheckerSummaryOrdersColumnsAsCheckCountUnexpectedPassed(t *testing
 	var headerLine string
 	var rowLine string
 	for _, line := range lines {
-		if strings.Contains(line, "Check") && strings.Contains(line, "Unexpected") && strings.Contains(line, "Passed") {
+		if strings.Contains(line, "Check") && strings.Contains(line, "Count") && strings.Contains(line, "Passed") {
 			headerLine = line
 		}
-		if strings.Contains(line, "probe_error_match") {
+		if strings.Contains(line, "generic_orphan_child") {
 			rowLine = line
 		}
 	}
 
-	if got := strings.Fields(headerLine); strings.Join(got, ",") != "Check,Count,Unexpected,Passed" {
-		t.Fatalf("header fields = %v, want [Check Count Unexpected Passed]", got)
+	if got := strings.Fields(headerLine); strings.Join(got, ",") != "Check,Count,Passed" {
+		t.Fatalf("header fields = %v, want [Check Count Passed]", got)
 	}
-	if got := strings.Fields(rowLine); strings.Join(got, ",") != "probe_error_match,7,2,true" {
-		t.Fatalf("row fields = %v, want [probe_error_match 7 2 true]", got)
+	if got := strings.Fields(rowLine); strings.Join(got, ",") != "generic_orphan_child,7,true" {
+		t.Fatalf("row fields = %v, want [generic_orphan_child 7 true]", got)
 	}
 }
 
@@ -255,11 +254,11 @@ func TestRunWorkloadPrintsSummaryWhenContextCanceled(t *testing.T) {
 	if db.beginCalls != 0 {
 		t.Fatalf("BeginTx calls = %d, want 0", db.beginCalls)
 	}
-	if db.execCalls != 1 {
-		t.Fatalf("ExecContext calls = %d, want 1", db.execCalls)
+	if db.execCalls != 0 {
+		t.Fatalf("ExecContext calls = %d, want 0", db.execCalls)
 	}
-	if db.queryCalls != 3 {
-		t.Fatalf("QueryRowContext calls = %d, want 3", db.queryCalls)
+	if db.queryCalls != 2 {
+		t.Fatalf("QueryRowContext calls = %d, want 2", db.queryCalls)
 	}
 	if db.canceledExecCalls != 0 {
 		t.Fatalf("ExecContext canceled calls = %d, want 0", db.canceledExecCalls)
